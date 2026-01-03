@@ -202,7 +202,12 @@ h1 i {
   color: #2c3e50;
 }
 
-/* 【修正箇所】自動進行スイッチ用スタイル */
+/* 【修正箇所】超過時間のスタイル */
+.timer.overtime {
+  color: #e74c3c; /* 赤色で警告 */
+}
+
+/* 自動進行スイッチ用スタイル */
 .settings-container {
   display: flex;
   justify-content: center;
@@ -379,7 +384,7 @@ input:checked + .slider:before {
   background-color: #e8f4fd;
 }
 
-/* 【修正箇所】完了して待機中のステップのスタイル */
+/* 完了して待機中のステップのスタイル */
 .sequence-item.waiting-next {
   background-color: #d4edda;
   animation: pulse-green 2s infinite;
