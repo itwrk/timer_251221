@@ -79,7 +79,6 @@ const resultsTableBody   = document.querySelector('#resultsTable tbody');
 const progressRingCircle = document.querySelector('.progress-ring-circle');
 const clearResultsButton = document.getElementById('clearResultsButton');
 const copyResultsButton  = document.getElementById('copyResultsButton');
-const logTabBtns         = document.querySelectorAll('.log-tab-btn');
 
 // 新規追加セクション系
 const addTaskHeader      = document.getElementById('addTaskHeader');
@@ -125,7 +124,6 @@ function formatDuration(seconds) {
 }
 
 // --- ヘルパー関数: 日時範囲フォーマット ---
-// 同じ日なら終了日時の日付を省略
 function formatDateRange(startDate, endDate) {
   // 文字列ならDate型に変換
   const start = new Date(startDate);
@@ -274,12 +272,17 @@ window.addEventListener('DOMContentLoaded', () => {
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
   
-  // ログタブの初期化
+  // 【重要】ログタブの初期化処理
+  const logTabBtns = document.querySelectorAll('.log-tab-btn');
   logTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
+      // 全ボタンからactiveクラスを削除
       logTabBtns.forEach(b => b.classList.remove('active'));
+      // クリックされたボタンにactiveクラスを追加
       btn.classList.add('active');
+      // 表示モードを切り替え
       currentLogView = btn.dataset.view;
+      // テーブルを再描画
       updateResultsTable();
     });
   });
@@ -830,7 +833,6 @@ function updateResultsTable() {
     // 詳細ログモード
     results.forEach(r => {
       const tr = document.createElement('tr');
-      // 終了時刻から開始時刻を逆算
       const endDate = new Date(r.date);
       const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
       const dateRangeStr = formatDateRange(startDate, endDate);
@@ -842,16 +844,15 @@ function updateResultsTable() {
     // タスクサマリーモード
     summaryResults.forEach(r => {
       const tr = document.createElement('tr');
-      // タスク名を抽出 (例: "朝ルーチン (5ステップ完了)" -> "朝ルーチン")
+      // タスク名を抽出
       const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
       const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
       
-      // 開始・終了時刻のフォーマット
+      // 開始・終了時刻
       let dateRangeStr = '';
       if (r.startTime && r.endTime) {
         dateRangeStr = formatDateRange(r.startTime, r.endTime);
       } else {
-        // 古いデータ用
         const endDate = new Date(r.date);
         const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
         dateRangeStr = formatDateRange(startDate, endDate);
