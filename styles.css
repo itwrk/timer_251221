@@ -490,6 +490,33 @@ input:checked + .slider:before {
   cursor: not-allowed;
 }
 
+/* ログ用タブのスタイル */
+.log-tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 0;
+}
+
+.log-tab-btn {
+  padding: 10px 15px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  color: #666;
+  font-weight: bold;
+}
+
+.log-tab-btn:hover {
+  background-color: #f8f9fa;
+  color: #333;
+}
+
+.log-tab-btn.active {
+  color: #3498db;
+  border-bottom-color: #3498db;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

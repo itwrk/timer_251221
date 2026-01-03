@@ -123,8 +123,18 @@
           <button id="clearResultsButton" class="clear-btn"><i class="fas fa-trash"></i> ログを消去</button>
         </div>
       </div>
+      
+      <div class="log-tabs">
+        <button class="log-tab-btn active" data-view="detail">詳細ログ (ステップごと)</button>
+        <button class="log-tab-btn" data-view="summary">タスクサマリー</button>
+      </div>
+
       <table id="resultsTable">
-        <thead><tr><th>日時</th><th>経過時間 (秒)</th><th>内容</th></tr></thead>
+        <thead>
+          <tr id="resultsTableHeader">
+            <th>日時</th><th>経過時間</th><th>内容</th>
+          </tr>
+        </thead>
         <tbody></tbody>
       </table>
     </div>

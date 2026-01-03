@@ -15,6 +15,7 @@ let isPaused = false;        // 一時停止中かどうかのフラグ
 let sortableInstance = null; // SortableJSインスタンス
 let isStepCompleted = false; // ステップ規定時間を過ぎて待機中かどうかのフラグ
 let currentRunStartIndex = 0; // 今回の実行結果がresults配列のどこから始まるかを記録
+let currentLogView = 'detail'; // 現在のログ表示モード ('detail' or 'summary')
 
 // --- LocalStorage キー定義 ---
 const STORAGE_KEYS = {
@@ -26,7 +27,6 @@ const STORAGE_KEYS = {
 
 // --- プリセットアイコン一覧 ---
 const PRESET_ICONS = [
-  // ご指定のリスト
   'fa-solid fa-bath',           // 風呂
   'fa-solid fa-toilet',         // トイレ
   'fa-solid fa-bed',            // 寝る
@@ -37,8 +37,6 @@ const PRESET_ICONS = [
   'fa-solid fa-droplet',        // 汗
   'fa-solid fa-face-smile',     // 笑顔
   'fa-solid fa-sun',            // 晴れ
-  
-  // 生活・ルーチン系追加
   'fa-solid fa-person-running', // 運動
   'fa-solid fa-person-walking', // 散歩
   'fa-solid fa-bicycle',        // 自転車
@@ -81,6 +79,7 @@ const resultsTableBody   = document.querySelector('#resultsTable tbody');
 const progressRingCircle = document.querySelector('.progress-ring-circle');
 const clearResultsButton = document.getElementById('clearResultsButton');
 const copyResultsButton  = document.getElementById('copyResultsButton');
+const logTabBtns         = document.querySelectorAll('.log-tab-btn');
 
 // 新規追加セクション系
 const addTaskHeader      = document.getElementById('addTaskHeader');
@@ -110,8 +109,42 @@ function updateProgressRing(percent) {
   progressRingCircle.style.strokeDashoffset = offset;
 }
 
+// --- ヘルパー関数: 時間フォーマット ---
+function formatDuration(seconds) {
+  const absSeconds = Math.abs(seconds);
+  const h = Math.floor(absSeconds / 3600);
+  const m = Math.floor((absSeconds % 3600) / 60);
+  const s = absSeconds % 60;
+  
+  let result = '';
+  if (h > 0) result += `${h}時間`;
+  if (m > 0) result += `${m}分`;
+  result += `${s}秒`;
+  
+  return result;
+}
+
+// --- ヘルパー関数: 日時範囲フォーマット ---
+// 同じ日なら終了日時の日付を省略
+function formatDateRange(startDate, endDate) {
+  // 文字列ならDate型に変換
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  const formatDatePart = (d) => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  const formatTimePart = (d) => `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+  
+  const startStr = `${formatDatePart(start)} ${formatTimePart(start)}`;
+  
+  // 同じ日かどうか判定
+  if (start.toDateString() === end.toDateString()) {
+    return `${startStr} 〜 ${formatTimePart(end)}`;
+  } else {
+    return `${startStr} 〜 ${formatDatePart(end)} ${formatTimePart(end)}`;
+  }
+}
+
 // --- アイコンヘルパー関数 ---
-// タスク名からデフォルトアイコンを決定（互換性用）
 function getDefaultIconForName(taskName) {
   const taskIcons = {
     'ラットプルダウン': 'fa-solid fa-arrow-down-wide-short',
@@ -129,7 +162,6 @@ function getDefaultIconForName(taskName) {
   return taskIcons[taskName] || 'fa-solid fa-headphones';
 }
 
-// データにあるアイコンを優先し、なければ推測する
 function getTaskIconClass(task) {
   if (task['アイコン'] && task['アイコン'].trim() !== '') {
     return task['アイコン'];
@@ -213,7 +245,6 @@ function parseAndSetupCSV(csvText) {
 }
 
 function updateCSVData() {
-  // アイコン列を含めて保存
   const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン'];
   let csvContent = headers.join(',') + '\n';
   allTasks.forEach(task => {
@@ -243,6 +274,16 @@ window.addEventListener('DOMContentLoaded', () => {
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
   
+  // ログタブの初期化
+  logTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      logTabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentLogView = btn.dataset.view;
+      updateResultsTable();
+    });
+  });
+
   // モーダル初期化
   initIconModal();
 });
@@ -292,7 +333,6 @@ function setupTaskButtons() {
 
   const names = [...new Set(allTasks.map(t=>t['タスク名']))];
   names.forEach(name => {
-    // 最初のステップのアイコンを取得してボタンに使用
     const firstTaskData = allTasks.find(t => t['タスク名'] === name);
     const iconClass = getTaskIconClass(firstTaskData);
     
@@ -308,7 +348,6 @@ function setupTaskButtons() {
 let currentIconSelectCallback = null;
 
 function initIconModal() {
-  // プリセットアイコンの生成
   presetIconGrid.innerHTML = '';
   PRESET_ICONS.forEach(iconClass => {
     const div = document.createElement('div');
@@ -318,11 +357,9 @@ function initIconModal() {
     presetIconGrid.appendChild(div);
   });
 
-  // モーダル閉じる
   closeModalBtn.onclick = () => iconModal.classList.add('hidden');
   window.onclick = (e) => { if (e.target === iconModal) iconModal.classList.add('hidden'); };
 
-  // 新規タスク用のアイコンボタンクリック時
   newTaskIconButton.onclick = () => {
     openIconModal((selectedIcon) => {
       newTaskIconValue.value = selectedIcon;
@@ -361,7 +398,6 @@ function addNewTask() {
   saveTasksData();
   setupTaskButtons();
   newTaskName.value = '';
-  // アイコンボタンリセット
   newTaskIconValue.value = 'fa-solid fa-headphones';
   newTaskIconButton.innerHTML = '<i class="fa-solid fa-headphones"></i> <span>アイコンを変更</span>';
   
@@ -379,7 +415,6 @@ function addNewStep() {
   const currentTaskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : '';
   if (!currentTaskName) return alert('タスクを選択してください');
   
-  // 親タスクのアイコンを引き継ぐ
   const parentTask = allTasks.find(t => t['タスク名'] === currentTaskName);
   const parentIcon = parentTask ? (parentTask['アイコン'] || '') : '';
 
@@ -689,7 +724,6 @@ function renderSequenceList(name) {
     const item = document.createElement('div');
     item.className = className;
     
-    // アイコン表示
     const iconClass = getTaskIconClass(task);
     
     item.innerHTML = `
@@ -788,19 +822,45 @@ function playCompletionSound() {
   } catch(e){}
 }
 
+// --- ログ表示の更新 (詳細/サマリー 切り替え) ---
 function updateResultsTable() {
   resultsTableBody.innerHTML = '';
-  results.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.date}</td><td>${r.seconds}</td><td>${r.content}</td>`;
-    resultsTableBody.appendChild(tr);
-  });
-  summaryResults.forEach(r => {
-    const tr = document.createElement('tr'); tr.className = 'summary-row';
-    const m = Math.floor(r.seconds/60), s = r.seconds%60;
-    tr.innerHTML = `<td>**合計: ${r.content}**<br>${m}分${s}秒<br>${r.startTime}〜${r.endTime}</td><td>${r.seconds}</td><td>${r.content}</td>`;
-    resultsTableBody.appendChild(tr);
-  });
+  
+  if (currentLogView === 'detail') {
+    // 詳細ログモード
+    results.forEach(r => {
+      const tr = document.createElement('tr');
+      // 終了時刻から開始時刻を逆算
+      const endDate = new Date(r.date);
+      const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
+      const dateRangeStr = formatDateRange(startDate, endDate);
+      
+      tr.innerHTML = `<td>${dateRangeStr}</td><td>${formatDuration(r.seconds)}</td><td>${r.content}</td>`;
+      resultsTableBody.appendChild(tr);
+    });
+  } else {
+    // タスクサマリーモード
+    summaryResults.forEach(r => {
+      const tr = document.createElement('tr');
+      // タスク名を抽出 (例: "朝ルーチン (5ステップ完了)" -> "朝ルーチン")
+      const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
+      const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
+      
+      // 開始・終了時刻のフォーマット
+      let dateRangeStr = '';
+      if (r.startTime && r.endTime) {
+        dateRangeStr = formatDateRange(r.startTime, r.endTime);
+      } else {
+        // 古いデータ用
+        const endDate = new Date(r.date);
+        const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
+        dateRangeStr = formatDateRange(startDate, endDate);
+      }
+      
+      tr.innerHTML = `<td>${dateRangeStr}</td><td>${formatDuration(r.seconds)}</td><td>${taskName}</td>`;
+      resultsTableBody.appendChild(tr);
+    });
+  }
 }
 
 clearResultsButton.onclick = () => {
@@ -809,7 +869,23 @@ clearResultsButton.onclick = () => {
 
 copyResultsButton.onclick = () => {
   if (results.length===0 && summaryResults.length===0) return alert('ログなし');
-  let text = results.map(r=>`${r.date}\t${r.seconds}\t${r.content}`).join('\n');
+  
+  let text = '';
+  if (currentLogView === 'detail') {
+    text = results.map(r => {
+      const endDate = new Date(r.date);
+      const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
+      return `${formatDateRange(startDate, endDate)}\t${formatDuration(r.seconds)}\t${r.content}`;
+    }).join('\n');
+  } else {
+    text = summaryResults.map(r => {
+      const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
+      const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
+      let dateRangeStr = r.startTime && r.endTime ? formatDateRange(r.startTime, r.endTime) : r.date;
+      return `${dateRangeStr}\t${formatDuration(r.seconds)}\t${taskName}`;
+    }).join('\n');
+  }
+  
   navigator.clipboard.writeText(text).then(()=>alert('コピー完了'));
 };
 
