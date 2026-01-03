@@ -490,18 +490,18 @@ input:checked + .slider:before {
   cursor: not-allowed;
 }
 
-/* ログ用タブのスタイル */
+/* --- ここが重要：ログ切り替えタブのスタイル --- */
 .log-tabs {
   display: flex;
   border-bottom: 1px solid #ddd;
-  margin-bottom: 0;
+  margin-bottom: 0; /* 下のテーブルとくっつける */
 }
 
 .log-tab-btn {
   padding: 10px 15px;
   background: none;
   border: none;
-  border-bottom: 3px solid transparent;
+  border-bottom: 3px solid transparent; /* 選択されていないときは透明 */
   cursor: pointer;
   color: #666;
   font-weight: bold;
@@ -514,7 +514,7 @@ input:checked + .slider:before {
 
 .log-tab-btn.active {
   color: #3498db;
-  border-bottom-color: #3498db;
+  border-bottom-color: #3498db; /* 選択されているときは青線 */
 }
 
 table {
