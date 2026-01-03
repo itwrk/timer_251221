@@ -14,7 +14,7 @@ let pausedStartTime = null;  // 一時停止時の開始時刻
 let isPaused = false;        // 一時停止中かどうかのフラグ
 let sortableInstance = null; // SortableJSインスタンス
 let isStepCompleted = false; // ステップ規定時間を過ぎて待機中かどうかのフラグ
-let currentRunStartIndex = 0; // 【修正】今回の実行結果がresults配列のどこから始まるかを記録
+let currentRunStartIndex = 0; // 今回の実行結果がresults配列のどこから始まるかを記録
 
 // --- LocalStorage キー定義 ---
 const STORAGE_KEYS = {
@@ -37,8 +37,8 @@ const timerSettings      = document.getElementById('timerSettings');
 const autoAdvanceToggle  = document.getElementById('autoAdvanceToggle');
 const pauseResumeButton  = document.getElementById('pauseResumeButton');
 const endButton          = document.getElementById('endButton');
-const prevButton         = document.getElementById('prevButton'); // 追加取得
-const nextButton         = document.getElementById('nextButton'); // 追加取得
+const prevButton         = document.getElementById('prevButton');
+const nextButton         = document.getElementById('nextButton');
 const sequenceTitle      = document.getElementById('sequenceTitle');
 const sequenceList       = document.getElementById('sequenceList');
 const resultsTableBody   = document.querySelector('#resultsTable tbody');
@@ -232,7 +232,7 @@ function setupTaskButtons() {
   updateProgressRing(100);
   addStepSection.classList.add('hidden');
 
-  // 【修正】ボタンの表示を確実にリセット
+  // ボタンの表示を確実にリセット
   prevButton.style.display = '';
   nextButton.style.display = '';
   endButton.style.display = '';
@@ -315,17 +315,17 @@ function startSequenceFor(name) {
   pausedStartTime = null;
   isStepCompleted = false;
   
-  // 【修正】今回の実行結果が配列のどこから始まるかを記録
+  // 今回の実行結果が配列のどこから始まるかを記録
   currentRunStartIndex = results.length;
   
-  // 【修正】コントロールボタンの非表示を解除（再実行時に必要）
+  // コントロールボタンの非表示を解除
   prevButton.style.display = '';
   nextButton.style.display = '';
   endButton.style.display = '';
   
   pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
   timerDisplay.className = 'timer';
-  updateProgressRing(100); // リングもリセット
+  updateProgressRing(100);
   
   sequenceTasks = allTasks.filter(t=>t['タスク名']===name).sort((a,b)=>(a['順番']||0)-(b['順番']||0));
   sequenceIndex = 0;
@@ -373,7 +373,12 @@ async function runNextStep() {
   }
   
   updateCurrentTaskDisplay();
-  speak(task['読み上げテキスト']);
+  
+  // 【修正箇所】項目名と読み上げテキストを結合して読み上げ
+  const textToSpeak = task['項目名'] 
+    ? `${task['項目名']}。${task['読み上げテキスト']}` 
+    : task['読み上げテキスト'];
+  speak(textToSpeak);
   
   // 残り時間設定
   if (pausedRemainingSeconds !== 0) {
@@ -547,7 +552,7 @@ function handleCompletion() {
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
   
-  // 【修正】今回の実行分(currentRunStartIndex以降)だけを集計する
+  // 今回の実行分(currentRunStartIndex以降)だけを集計する
   const currentRunResults = results.slice(currentRunStartIndex);
   const totalExecutedSeconds = currentRunResults.reduce((sum, r) => sum + r.seconds, 0);
   
