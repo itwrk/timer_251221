@@ -6,7 +6,7 @@ let remainingSeconds = 0;    // タイマーの残り秒数（マイナスの場
 let timerId = null;          // メインタイマー用 ID
 let preId = null;            // 事前カウントダウン用 ID
 let taskStartTime = null;    // タスク全体の開始時刻
-let results = [];            // 実行結果ログ
+let results = [];            // 実行結果ログ（セッション全体）
 let isCompletionHandled = false; // 終了処理が実行済みかのフラグ
 let summaryResults = [];     // 過去のサマリー結果を保持する配列
 let pausedRemainingSeconds = 0; // 一時停止時の残り時間保持用
@@ -14,6 +14,7 @@ let pausedStartTime = null;  // 一時停止時の開始時刻
 let isPaused = false;        // 一時停止中かどうかのフラグ
 let sortableInstance = null; // SortableJSインスタンス
 let isStepCompleted = false; // ステップ規定時間を過ぎて待機中かどうかのフラグ
+let currentRunStartIndex = 0; // 【修正】今回の実行結果がresults配列のどこから始まるかを記録
 
 // --- LocalStorage キー定義 ---
 const STORAGE_KEYS = {
@@ -36,6 +37,8 @@ const timerSettings      = document.getElementById('timerSettings');
 const autoAdvanceToggle  = document.getElementById('autoAdvanceToggle');
 const pauseResumeButton  = document.getElementById('pauseResumeButton');
 const endButton          = document.getElementById('endButton');
+const prevButton         = document.getElementById('prevButton'); // 追加取得
+const nextButton         = document.getElementById('nextButton'); // 追加取得
 const sequenceTitle      = document.getElementById('sequenceTitle');
 const sequenceList       = document.getElementById('sequenceList');
 const resultsTableBody   = document.querySelector('#resultsTable tbody');
@@ -229,9 +232,10 @@ function setupTaskButtons() {
   updateProgressRing(100);
   addStepSection.classList.add('hidden');
 
-  document.getElementById('prevButton').style.display = '';
-  document.getElementById('nextButton').style.display = '';
-  document.getElementById('endButton').style.display = '';
+  // 【修正】ボタンの表示を確実にリセット
+  prevButton.style.display = '';
+  nextButton.style.display = '';
+  endButton.style.display = '';
 
   const names = [...new Set(allTasks.map(t=>t['タスク名']))];
   names.forEach(name => {
@@ -259,6 +263,7 @@ function addNewTask() {
   saveTasksData();
   setupTaskButtons();
   newTaskName.value = '';
+  showSuccessMessage(addTaskContent, `タスク「${taskName}」を追加しました`);
   updateCSVData();
 }
 
@@ -281,6 +286,7 @@ function addNewStep() {
   saveTasksData();
   renderSequenceList(currentTaskName);
   newStepName.value = ''; newStepText.value = '';
+  showSuccessMessage(addStepSection.querySelector('.section-content'), `新しいステップを追加しました`);
   updateCSVData();
 }
 
@@ -292,6 +298,15 @@ function showErrorMessage(el, msg) {
   setTimeout(()=>el.classList.remove('error'), 2000);
 }
 
+function showSuccessMessage(container, message) {
+  container.querySelectorAll('.success-message').forEach(el => el.remove());
+  const successDiv = document.createElement('div');
+  successDiv.className = 'success-message';
+  successDiv.textContent = message;
+  container.appendChild(successDiv);
+  setTimeout(() => { successDiv.remove(); }, 3000);
+}
+
 // --- メイン処理開始 ---
 function startSequenceFor(name) {
   isCompletionHandled = false;
@@ -300,8 +315,17 @@ function startSequenceFor(name) {
   pausedStartTime = null;
   isStepCompleted = false;
   
+  // 【修正】今回の実行結果が配列のどこから始まるかを記録
+  currentRunStartIndex = results.length;
+  
+  // 【修正】コントロールボタンの非表示を解除（再実行時に必要）
+  prevButton.style.display = '';
+  nextButton.style.display = '';
+  endButton.style.display = '';
+  
   pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
   timerDisplay.className = 'timer';
+  updateProgressRing(100); // リングもリセット
   
   sequenceTasks = allTasks.filter(t=>t['タスク名']===name).sort((a,b)=>(a['順番']||0)-(b['順番']||0));
   sequenceIndex = 0;
@@ -399,13 +423,9 @@ function recordCurrentTaskResult(isSkipped = false) {
   const task = sequenceTasks[sequenceIndex];
   const now = new Date();
   
-  // 経過時間計算ロジック
-  // 設定秒数(10) - 残り秒数(-5) = 15秒 (超過)
-  // 設定秒数(10) - 残り秒数(2)  = 8秒 (スキップ)
   const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
   
   let contentSuffix = '';
-  // 手動スキップ（残り時間があり、かつ完了待ち状態でない場合）はスキップとみなす
   if (remainingSeconds > 0 && isSkipped) {
     contentSuffix = ' (スキップ)';
   }
@@ -466,7 +486,7 @@ pauseResumeButton.addEventListener('click', () => {
   }
 });
 
-document.getElementById('nextButton').addEventListener('click', () => {
+nextButton.addEventListener('click', () => {
   if (sequenceIndex < sequenceTasks.length) {
     if (timerId) { clearInterval(timerId); timerId = null; }
     if (preId) { clearInterval(preId); preId = null; }
@@ -483,7 +503,7 @@ document.getElementById('nextButton').addEventListener('click', () => {
   }
 });
 
-document.getElementById('prevButton').addEventListener('click', () => {
+prevButton.addEventListener('click', () => {
   if (sequenceIndex > 0) {
     if (timerId) { clearInterval(timerId); timerId = null; }
     if (preId) { clearInterval(preId); preId = null; }
@@ -495,7 +515,7 @@ document.getElementById('prevButton').addEventListener('click', () => {
   }
 });
 
-document.getElementById('endButton').addEventListener('click', () => {
+endButton.addEventListener('click', () => {
   if (confirm('タスクを終了しますか？')) {
     if (timerId) { clearInterval(timerId); timerId = null; }
     if (preId) { clearInterval(preId); preId = null; }
@@ -527,7 +547,10 @@ function handleCompletion() {
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
   
-  const totalExecutedSeconds = results.reduce((sum, r) => sum + r.seconds, 0);
+  // 【修正】今回の実行分(currentRunStartIndex以降)だけを集計する
+  const currentRunResults = results.slice(currentRunStartIndex);
+  const totalExecutedSeconds = currentRunResults.reduce((sum, r) => sum + r.seconds, 0);
+  
   const endTime = new Date();
   const endTimeString = `${endTime.getFullYear()}/${endTime.getMonth()+1}/${endTime.getDate()} ${endTime.getHours().toString().padStart(2,'0')}:${endTime.getMinutes().toString().padStart(2,'0')}:${endTime.getSeconds().toString().padStart(2,'0')}`;
   const startTimeString = taskStartTime ? 
@@ -539,14 +562,15 @@ function handleCompletion() {
     startTime: startTimeString,
     endTime: endTimeString,
     seconds: totalExecutedSeconds,
-    content: `${taskName} (${results.length}ステップ完了)`
+    content: `${taskName} (${currentRunResults.length}ステップ完了)`
   });
   saveResultsData();
   updateResultsTable();
   
-  document.getElementById('prevButton').style.display = 'none';
-  document.getElementById('nextButton').style.display = 'none';
-  document.getElementById('endButton').style.display = 'none';
+  // 完了後はボタンを隠す（次にスタートする時に startSequenceFor で再表示される）
+  prevButton.style.display = 'none';
+  nextButton.style.display = 'none';
+  endButton.style.display = 'none';
 }
 
 // --- リスト表示関連 ---
@@ -576,19 +600,18 @@ function renderSequenceList(name) {
     
     const item = document.createElement('div');
     item.className = className;
-    // ... (以下、リストアイテム生成処理は変更なしのため省略可能ですが、念のため記述)
+    
     const icon = getTaskIcon(task['タスク名']);
     item.innerHTML = `
       <div class="drag-handle ${i===sequenceIndex?'disabled':''}"><i class="fas fa-grip-vertical"></i></div>
       <div class="label-container"><i class="${icon}"></i></div>
     `;
     
-    // input要素の生成とイベントリスナー（省略せず記述）
     const nameInput = document.createElement('input');
     nameInput.type='text'; nameInput.value=task['項目名']||''; nameInput.className='seq-name-input';
     nameInput.onchange = (e) => {
         task['項目名'] = e.target.value;
-        const orgIdx = allTasks.findIndex(t => t===task); // オブジェクト参照で検索
+        const orgIdx = allTasks.findIndex(t => t===task);
         if(orgIdx!==-1) { allTasks[orgIdx]['項目名']=e.target.value; saveTasksData(); }
     };
     
@@ -647,7 +670,6 @@ function initSortable() {
       if (evt.oldIndex === evt.newIndex) return;
       const moved = sequenceTasks.splice(sequenceIndex + evt.oldIndex, 1)[0];
       sequenceTasks.splice(sequenceIndex + evt.newIndex, 0, moved);
-      // 順番フィールド更新ロジックは省略（実行順序のみ入れ替え）
       renderSequenceList(sequenceTasks[0]['タスク名']);
     }
   });
