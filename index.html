@@ -14,6 +14,15 @@
     <div class="starburst"></div>
   </div>
 
+  <div id="iconModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-modal">&times;</span>
+      <h2>アイコンを選択</h2>
+      <div class="icon-grid" id="presetIconGrid">
+        </div>
+    </div>
+  </div>
+
   <div class="container">
     <div class="header-container">
       <h1><i class="fas fa-headphones"></i> ライフリッスンタイマー</h1>
@@ -37,21 +46,11 @@
           <input type="text" id="newTaskName" placeholder="新しいタスク名を入力" class="form-input">
         </div>
         <div class="form-group">
-          <label for="newTaskIcon">アイコン:</label>
-          <select id="newTaskIcon" class="form-select">
-            <option value="fa-solid fa-headphones">ヘッドフォン (デフォルト)</option>
-            <option value="fa-solid fa-arrow-down-wide-short">ラットプルダウン</option>
-            <option value="fa-solid fa-person-walking">スクワット</option>
-            <option value="fa-solid fa-arrows-left-right">シーテッドロー</option>
-            <option value="fa-solid fa-table">机</option>
-            <option value="fa-solid fa-tooth">歯</option>
-            <option value="fa-solid fa-shirt">着替え</option>
-            <option value="fa-solid fa-file-invoice">請求書</option>
-            <option value="fa-solid fa-book">読書</option>
-            <option value="fa-solid fa-mug-hot">休憩</option>
-            <option value="fa-solid fa-utensils">食事</option>
-            <option value="fa-solid fa-pen">書く</option>
-          </select>
+          <label>アイコン:</label>
+          <button id="newTaskIconButton" class="icon-select-btn">
+            <i class="fa-solid fa-headphones"></i> <span>アイコンを変更</span>
+          </button>
+          <input type="hidden" id="newTaskIconValue" value="fa-solid fa-headphones">
         </div>
         <button id="addTaskButton" class="action-btn"><i class="fas fa-plus"></i> タスクを追加</button>
       </div>

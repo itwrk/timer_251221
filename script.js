@@ -2,7 +2,7 @@
 let allTasks = [];           // CSV 全データ
 let sequenceTasks = [];      // 選択中タスク名のステップ一覧
 let sequenceIndex = 0;       // 現在のステップインデックス
-let remainingSeconds = 0;    // タイマーの残り秒数（マイナスの場合は超過時間）
+let remainingSeconds = 0;    // タイマーの残り秒数
 let timerId = null;          // メインタイマー用 ID
 let preId = null;            // 事前カウントダウン用 ID
 let taskStartTime = null;    // タスク全体の開始時刻
@@ -24,6 +24,42 @@ const STORAGE_KEYS = {
   LAST_CSV: 'lifelisten_timer_last_csv'
 };
 
+// --- プリセットアイコン一覧 ---
+const PRESET_ICONS = [
+  // ご指定のリスト
+  'fa-solid fa-bath',           // 風呂
+  'fa-solid fa-toilet',         // トイレ
+  'fa-solid fa-bed',            // 寝る
+  'fa-solid fa-utensils',       // 食べる
+  'fa-solid fa-fire-burner',    // 料理する
+  'fa-solid fa-broom',          // 掃除する
+  'fa-solid fa-briefcase',      // 仕事する
+  'fa-solid fa-droplet',        // 汗
+  'fa-solid fa-face-smile',     // 笑顔
+  'fa-solid fa-sun',            // 晴れ
+  
+  // 生活・ルーチン系追加
+  'fa-solid fa-person-running', // 運動
+  'fa-solid fa-person-walking', // 散歩
+  'fa-solid fa-bicycle',        // 自転車
+  'fa-solid fa-train',          // 電車
+  'fa-solid fa-shirt',          // 着替え
+  'fa-solid fa-tooth',          // 歯磨き
+  'fa-solid fa-book',           // 読書・勉強
+  'fa-solid fa-laptop',         // パソコン
+  'fa-solid fa-mobile-screen',  // スマホ
+  'fa-solid fa-cart-shopping',  // 買い物
+  'fa-solid fa-yen-sign',       // お金
+  'fa-solid fa-mug-hot',        // 休憩
+  'fa-solid fa-wine-glass',     // 飲み会・酒
+  'fa-solid fa-music',          // 音楽
+  'fa-solid fa-trash-can',      // ゴミ捨て
+  'fa-solid fa-pills',          // 薬
+  'fa-solid fa-hospital',       // 病院
+  'fa-solid fa-heart',          // ハート
+  'fa-solid fa-star',           // 星
+  'fa-solid fa-headphones'      // デフォルト
+];
 
 // --- DOM要素の取得 ---
 const importCsvInput     = document.getElementById('importCsvInput');
@@ -50,13 +86,19 @@ const copyResultsButton  = document.getElementById('copyResultsButton');
 const addTaskHeader      = document.getElementById('addTaskHeader');
 const addTaskContent     = document.getElementById('addTaskContent');
 const newTaskName        = document.getElementById('newTaskName');
-const newTaskIcon        = document.getElementById('newTaskIcon');
+const newTaskIconButton  = document.getElementById('newTaskIconButton');
+const newTaskIconValue   = document.getElementById('newTaskIconValue');
 const addTaskButton      = document.getElementById('addTaskButton');
 const addStepSection     = document.getElementById('addStepSection');
 const newStepName        = document.getElementById('newStepName');
 const newStepText        = document.getElementById('newStepText');
 const newStepSeconds     = document.getElementById('newStepSeconds');
 const addStepButton      = document.getElementById('addStepButton');
+
+// モーダル系
+const iconModal          = document.getElementById('iconModal');
+const closeModalBtn      = document.querySelector('.close-modal');
+const presetIconGrid     = document.getElementById('presetIconGrid');
 
 // --- プログレスリング設定 ---
 const progressRingRadius = parseInt(progressRingCircle.getAttribute('r'));
@@ -68,8 +110,9 @@ function updateProgressRing(percent) {
   progressRingCircle.style.strokeDashoffset = offset;
 }
 
-// --- アイコン取得ヘルパー ---
-function getTaskIcon(taskName) {
+// --- アイコンヘルパー関数 ---
+// タスク名からデフォルトアイコンを決定（互換性用）
+function getDefaultIconForName(taskName) {
   const taskIcons = {
     'ラットプルダウン': 'fa-solid fa-arrow-down-wide-short',
     'スクワット': 'fa-solid fa-person-walking',
@@ -82,9 +125,16 @@ function getTaskIcon(taskName) {
     '休憩': 'fa-solid fa-mug-hot',
     '食事': 'fa-solid fa-utensils',
     '書く': 'fa-solid fa-pen',
-    'default': 'fa-solid fa-headphones'
   };
-  return taskIcons[taskName] || taskIcons['default'];
+  return taskIcons[taskName] || 'fa-solid fa-headphones';
+}
+
+// データにあるアイコンを優先し、なければ推測する
+function getTaskIconClass(task) {
+  if (task['アイコン'] && task['アイコン'].trim() !== '') {
+    return task['アイコン'];
+  }
+  return getDefaultIconForName(task['タスク名']);
 }
 
 function isRestPeriod(taskText) {
@@ -163,12 +213,13 @@ function parseAndSetupCSV(csvText) {
 }
 
 function updateCSVData() {
-  const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番'];
+  // アイコン列を含めて保存
+  const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン'];
   let csvContent = headers.join(',') + '\n';
   allTasks.forEach(task => {
     const row = headers.map(header => {
       let value = task[header] || '';
-      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+      if (typeof value === 'string') {
         value = `"${value.replace(/"/g, '""')}"`;
       }
       return value;
@@ -191,6 +242,9 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
+  
+  // モーダル初期化
+  initIconModal();
 });
 
 function restoreDataFromLocalStorage() {
@@ -232,24 +286,68 @@ function setupTaskButtons() {
   updateProgressRing(100);
   addStepSection.classList.add('hidden');
 
-  // ボタンの表示を確実にリセット
   prevButton.style.display = '';
   nextButton.style.display = '';
   endButton.style.display = '';
 
   const names = [...new Set(allTasks.map(t=>t['タスク名']))];
   names.forEach(name => {
+    // 最初のステップのアイコンを取得してボタンに使用
+    const firstTaskData = allTasks.find(t => t['タスク名'] === name);
+    const iconClass = getTaskIconClass(firstTaskData);
+    
     const btn = document.createElement('button');
-    btn.innerHTML = `<i class="${getTaskIcon(name)}"></i> ${name}`;
+    btn.innerHTML = `<i class="${iconClass}"></i> ${name}`;
     btn.classList.add('task-btn');
     btn.addEventListener('click', ()=> startSequenceFor(name));
     taskButtons.appendChild(btn);
   });
 }
 
+// --- アイコンモーダル関連処理 ---
+let currentIconSelectCallback = null;
+
+function initIconModal() {
+  // プリセットアイコンの生成
+  presetIconGrid.innerHTML = '';
+  PRESET_ICONS.forEach(iconClass => {
+    const div = document.createElement('div');
+    div.className = 'icon-item';
+    div.innerHTML = `<i class="${iconClass}"></i>`;
+    div.onclick = () => selectIcon(iconClass);
+    presetIconGrid.appendChild(div);
+  });
+
+  // モーダル閉じる
+  closeModalBtn.onclick = () => iconModal.classList.add('hidden');
+  window.onclick = (e) => { if (e.target === iconModal) iconModal.classList.add('hidden'); };
+
+  // 新規タスク用のアイコンボタンクリック時
+  newTaskIconButton.onclick = () => {
+    openIconModal((selectedIcon) => {
+      newTaskIconValue.value = selectedIcon;
+      newTaskIconButton.innerHTML = `<i class="${selectedIcon}"></i> <span>変更</span>`;
+    });
+  };
+}
+
+function openIconModal(callback) {
+  currentIconSelectCallback = callback;
+  iconModal.classList.remove('hidden');
+}
+
+function selectIcon(iconClass) {
+  if (currentIconSelectCallback) {
+    currentIconSelectCallback(iconClass);
+  }
+  iconModal.classList.add('hidden');
+}
+
 // --- タスク/ステップ追加 ---
 function addNewTask() {
   const taskName = newTaskName.value.trim();
+  const iconValue = newTaskIconValue.value;
+  
   if (!taskName) return showErrorMessage(newTaskName, 'タスク名を入力してください');
   
   if (allTasks.some(t => t['タスク名'] === taskName)) {
@@ -257,12 +355,16 @@ function addNewTask() {
   }
   
   const newTask = {
-    'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 7, '順番': 1
+    'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 7, '順番': 1, 'アイコン': iconValue
   };
   allTasks.push(newTask);
   saveTasksData();
   setupTaskButtons();
   newTaskName.value = '';
+  // アイコンボタンリセット
+  newTaskIconValue.value = 'fa-solid fa-headphones';
+  newTaskIconButton.innerHTML = '<i class="fa-solid fa-headphones"></i> <span>アイコンを変更</span>';
+  
   showSuccessMessage(addTaskContent, `タスク「${taskName}」を追加しました`);
   updateCSVData();
 }
@@ -277,9 +379,13 @@ function addNewStep() {
   const currentTaskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : '';
   if (!currentTaskName) return alert('タスクを選択してください');
   
+  // 親タスクのアイコンを引き継ぐ
+  const parentTask = allTasks.find(t => t['タスク名'] === currentTaskName);
+  const parentIcon = parentTask ? (parentTask['アイコン'] || '') : '';
+
   const maxOrder = Math.max(...sequenceTasks.map(t => t['順番'] || 0), 0);
   const newStep = {
-    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, '順番': maxOrder + 1
+    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, '順番': maxOrder + 1, 'アイコン': parentIcon
   };
   allTasks.push(newStep);
   sequenceTasks.push(newStep);
@@ -293,7 +399,6 @@ function addNewStep() {
 // --- メッセージ表示 ---
 function showErrorMessage(el, msg) {
   el.classList.add('error');
-  // 簡易実装
   alert(msg); 
   setTimeout(()=>el.classList.remove('error'), 2000);
 }
@@ -315,10 +420,8 @@ function startSequenceFor(name) {
   pausedStartTime = null;
   isStepCompleted = false;
   
-  // 今回の実行結果が配列のどこから始まるかを記録
   currentRunStartIndex = results.length;
   
-  // コントロールボタンの非表示を解除
   prevButton.style.display = '';
   nextButton.style.display = '';
   endButton.style.display = '';
@@ -348,7 +451,7 @@ async function runNextStep() {
   }
   
   const task = sequenceTasks[sequenceIndex];
-  const icon = getTaskIcon(task['タスク名']);
+  const iconClass = getTaskIconClass(task);
   
   timerControls.classList.remove('hidden');
   timerSettings.classList.remove('hidden');
@@ -356,7 +459,7 @@ async function runNextStep() {
   if (sequenceIndex === 0) {
     speak(`${task['タスク名']}を開始します`);
     let preCount = 5;
-    currentTaskDisplay.innerHTML = `<i class="${icon}"></i> ${task['タスク名']}を開始します... ${preCount}`;
+    currentTaskDisplay.innerHTML = `<i class="${iconClass}"></i> ${task['タスク名']}を開始します... ${preCount}`;
     let localPaused = false;
     await new Promise(resolve => {
       preId = setInterval(() => {
@@ -364,7 +467,7 @@ async function runNextStep() {
         if (localPaused) localPaused = false;
         preCount--;
         if (preCount > 0) {
-          currentTaskDisplay.innerHTML = `<i class="${icon}"></i> ${task['タスク名']}を開始します... ${preCount}`;
+          currentTaskDisplay.innerHTML = `<i class="${iconClass}"></i> ${task['タスク名']}を開始します... ${preCount}`;
         } else {
           clearInterval(preId); preId = null; resolve();
         }
@@ -374,13 +477,11 @@ async function runNextStep() {
   
   updateCurrentTaskDisplay();
   
-  // 【修正箇所】項目名と読み上げテキストを結合して読み上げ
   const textToSpeak = task['項目名'] 
     ? `${task['項目名']}。${task['読み上げテキスト']}` 
     : task['読み上げテキスト'];
   speak(textToSpeak);
   
-  // 残り時間設定
   if (pausedRemainingSeconds !== 0) {
     remainingSeconds = pausedRemainingSeconds;
     pausedRemainingSeconds = 0;
@@ -401,7 +502,6 @@ function updateTimerDisplay() {
   const timeString = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
   
   if (remainingSeconds < 0) {
-    // 超過表示 (+00:05 等)
     timerDisplay.textContent = `+${timeString}`;
     timerDisplay.classList.add('overtime');
   } else {
@@ -409,7 +509,6 @@ function updateTimerDisplay() {
     timerDisplay.classList.remove('overtime');
   }
   
-  // プログレスリング
   const currentTask = sequenceTasks[sequenceIndex];
   if (currentTask) {
     const taskSeconds = currentTask['秒数'] || 0;
@@ -421,7 +520,7 @@ function updateTimerDisplay() {
   }
 }
 
-// --- 現在の結果を記録するヘルパー ---
+// --- 結果記録 ---
 function recordCurrentTaskResult(isSkipped = false) {
   if (sequenceIndex >= sequenceTasks.length) return;
 
@@ -450,26 +549,20 @@ function startTimer() {
   
   timerId = setInterval(() => {
     if (isPaused) return;
-    
-    // カウントダウン（0を過ぎてもマイナスへ進む）
     remainingSeconds--;
     updateTimerDisplay();
     
-    // 0になった瞬間の処理
     if (remainingSeconds === 0) {
       if (autoAdvanceToggle.checked) {
-        // 自動進行ON
-        recordCurrentTaskResult(); // ログ記録
+        recordCurrentTaskResult();
         sequenceIndex++;
         if (timerId) clearInterval(timerId); timerId = null;
         runNextStep();
       } else {
-        // 自動進行OFF（手動待ち）
         isStepCompleted = true;
         speak('完了');
         updateCurrentTaskDisplay();
         renderSequenceList(sequenceTasks[sequenceIndex]['タスク名']);
-        // タイマーは止めない（超過計測継続）
       }
     }
   }, 1000);
@@ -495,14 +588,10 @@ nextButton.addEventListener('click', () => {
   if (sequenceIndex < sequenceTasks.length) {
     if (timerId) { clearInterval(timerId); timerId = null; }
     if (preId) { clearInterval(preId); preId = null; }
-    
     isPaused = false;
     pausedRemainingSeconds = 0;
     pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
-    
-    // 現在の結果を記録（スキップフラグは残り時間があるかどうかで判定）
     recordCurrentTaskResult(remainingSeconds > 0);
-    
     sequenceIndex++;
     runNextStep();
   }
@@ -514,7 +603,6 @@ prevButton.addEventListener('click', () => {
     if (preId) { clearInterval(preId); preId = null; }
     isPaused = false;
     pausedRemainingSeconds = 0;
-    
     sequenceIndex--;
     runNextStep();
   }
@@ -524,12 +612,9 @@ endButton.addEventListener('click', () => {
   if (confirm('タスクを終了しますか？')) {
     if (timerId) { clearInterval(timerId); timerId = null; }
     if (preId) { clearInterval(preId); preId = null; }
-    
-    // 途中終了でも現在の進行状況を記録する
     if (sequenceIndex < sequenceTasks.length) {
         recordCurrentTaskResult(remainingSeconds > 0);
     }
-    
     handleCompletion();
   }
 });
@@ -552,7 +637,6 @@ function handleCompletion() {
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
   
-  // 今回の実行分(currentRunStartIndex以降)だけを集計する
   const currentRunResults = results.slice(currentRunStartIndex);
   const totalExecutedSeconds = currentRunResults.reduce((sum, r) => sum + r.seconds, 0);
   
@@ -572,7 +656,6 @@ function handleCompletion() {
   saveResultsData();
   updateResultsTable();
   
-  // 完了後はボタンを隠す（次にスタートする時に startSequenceFor で再表示される）
   prevButton.style.display = 'none';
   nextButton.style.display = 'none';
   endButton.style.display = 'none';
@@ -582,8 +665,8 @@ function handleCompletion() {
 function updateCurrentTaskDisplay() {
   if (sequenceIndex >= sequenceTasks.length) return;
   const task = sequenceTasks[sequenceIndex];
-  const icon = getTaskIcon(task['タスク名']);
-  let html = `<i class="${icon}"></i> ${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']}`;
+  const iconClass = getTaskIconClass(task);
+  let html = `<i class="${iconClass}"></i> ${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']}`;
   if (isStepCompleted) {
     html += ' <span style="color: #27ae60; font-weight: bold;">(完了 - 超過計測中)</span>';
   }
@@ -606,10 +689,12 @@ function renderSequenceList(name) {
     const item = document.createElement('div');
     item.className = className;
     
-    const icon = getTaskIcon(task['タスク名']);
+    // アイコン表示
+    const iconClass = getTaskIconClass(task);
+    
     item.innerHTML = `
       <div class="drag-handle ${i===sequenceIndex?'disabled':''}"><i class="fas fa-grip-vertical"></i></div>
-      <div class="label-container"><i class="${icon}"></i></div>
+      <div class="label-container"><i class="${iconClass}"></i></div>
     `;
     
     const nameInput = document.createElement('input');
@@ -652,11 +737,9 @@ function renderSequenceList(name) {
   initSortable();
 }
 
-// --- その他のヘルパー (削除、Sortable、演出など) ---
 function deleteSequenceTask(index) {
   if (index === sequenceIndex) return alert('実行中は削除できません');
   if (!confirm('削除しますか？')) return;
-  
   const task = sequenceTasks[index];
   const allIdx = allTasks.indexOf(task);
   if (allIdx !== -1) allTasks.splice(allIdx, 1);
