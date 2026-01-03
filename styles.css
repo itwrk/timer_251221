@@ -202,6 +202,68 @@ h1 i {
   color: #2c3e50;
 }
 
+/* 【修正箇所】自動進行スイッチ用スタイル */
+.settings-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.settings-container.hidden {
+  display: none;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 20px;
+  margin-right: 10px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: #555;
+}
+
 /* コントロールボタン */
 .controls {
   display: flex;
@@ -315,6 +377,18 @@ h1 i {
 
 .sequence-item.active {
   background-color: #e8f4fd;
+}
+
+/* 【修正箇所】完了して待機中のステップのスタイル */
+.sequence-item.waiting-next {
+  background-color: #d4edda;
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
 }
 
 .sequence-item:hover:not(.active) {

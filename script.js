@@ -14,6 +14,7 @@ let pausedRemainingSeconds = 0; // 一時停止時の残り時間
 let pausedStartTime = null;  // 一時停止時の開始時刻
 let isPaused = false;        // 一時停止中かどうかのフラグ
 let sortableInstance = null; // SortableJSインスタンス
+let isStepCompleted = false; // 【修正箇所】ステップが完了しているか（手動待ち状態）のフラグ
 
 // --- LocalStorage キー定義 ---
 const STORAGE_KEYS = {
@@ -32,6 +33,8 @@ const taskButtons        = document.getElementById('taskButtons');
 const currentTaskDisplay = document.getElementById('currentTaskDisplay');
 const timerDisplay       = document.getElementById('timerDisplay');
 const timerControls      = document.getElementById('timerControls');
+const timerSettings      = document.getElementById('timerSettings'); // 【修正箇所】設定エリア
+const autoAdvanceToggle  = document.getElementById('autoAdvanceToggle'); // 【修正箇所】自動進行スイッチ
 const pauseResumeButton  = document.getElementById('pauseResumeButton');
 const endButton          = document.getElementById('endButton');
 const sequenceTitle      = document.getElementById('sequenceTitle');
@@ -257,6 +260,7 @@ function setupTaskButtons() {
   currentTaskDisplay.innerHTML = '<i class="fas fa-info-circle"></i> タスクを選択してください';
   timerDisplay.textContent = '--:--';
   timerControls.classList.add('hidden');
+  timerSettings.classList.add('hidden'); // 【修正箇所】設定エリアも初期は隠す
   sequenceList.innerHTML = '';
   sequenceTitle.innerHTML = '<i class="fas fa-list-ol"></i> 実行予定のタスク';
   
@@ -401,6 +405,9 @@ function startSequenceFor(name) {
   pausedRemainingSeconds = 0;
   pausedStartTime = null;
   
+  // 完了待機フラグをリセット
+  isStepCompleted = false; // 【修正箇所】
+  
   // 一時停止ボタンの表示をリセット
   pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
   
@@ -512,8 +519,17 @@ function renderSequenceList(name) {
   sequenceTasks.forEach((task, i) => {
     if (i < sequenceIndex) return; // 実行済みを除外
     
+    // 【修正箇所】完了待機中は専用クラスを付与
+    let className = 'sequence-item';
+    if (i === sequenceIndex) {
+      className += ' active';
+      if (isStepCompleted) {
+        className += ' waiting-next'; // 待機中クラス
+      }
+    }
+    
     const item = document.createElement('div');
-    item.className = 'sequence-item' + (i === sequenceIndex ? ' active' : '');
+    item.className = className;
     item.dataset.index = i;
     
     // タスク内容に応じたアイコンを追加
@@ -825,11 +841,19 @@ function updateCurrentTaskDisplay() {
   const stepName = task['項目名'] || '';
   const readText = task['読み上げテキスト'] || '';
   
-  currentTaskDisplay.innerHTML = `<i class="${icon}"></i> ${task['タスク名']}：${stepName}：${readText}`;
+  // 【修正箇所】待機中の場合はメッセージを付与
+  let displayHTML = `<i class="${icon}"></i> ${task['タスク名']}：${stepName}：${readText}`;
+  if (isStepCompleted) {
+    displayHTML += ' <span style="color: #27ae60; font-weight: bold;">(完了 - 次へ進んでください)</span>';
+  }
+  currentTaskDisplay.innerHTML = displayHTML;
 }
 
 // --- 次のステップを実行 ---
 async function runNextStep() {
+  // 【修正箇所】ステップ開始時に完了フラグをリセット
+  isStepCompleted = false;
+
   if (sequenceIndex >= sequenceTasks.length) {
     handleCompletion();
     return;
@@ -841,6 +865,7 @@ async function runNextStep() {
   
   // タイマーコントロールを表示
   timerControls.classList.remove('hidden');
+  timerSettings.classList.remove('hidden'); // 【修正箇所】設定エリアを表示
   
   // 初回のみ5秒カウントダウンと開始アナウンス
   if (sequenceIndex === 0) {
@@ -927,6 +952,9 @@ function startTimer() {
     // 一時停止中は何もしない
     if (isPaused) return;
     
+    // 待機中は何もしない（念のため）
+    if (isStepCompleted) return;
+
     remainingSeconds--;
     updateTimerDisplay();
     
@@ -946,9 +974,21 @@ function startTimer() {
       // 結果テーブルを更新
       updateResultsTable();
       
-      // 次のステップへ
-      sequenceIndex++;
-      runNextStep();
+      // 【修正箇所】自動進行判定
+      if (autoAdvanceToggle.checked) {
+        // 自動進行ONの場合はそのまま進む
+        sequenceIndex++;
+        runNextStep();
+      } else {
+        // 自動進行OFFの場合は待機状態にする
+        isStepCompleted = true;
+        // 完了通知音（任意）
+        speak('完了'); 
+        // 表示更新（「完了」ステータス表示用）
+        updateCurrentTaskDisplay();
+        // リスト更新（待機中アニメーション用）
+        renderSequenceList(task['タスク名']);
+      }
     }
   }, 1000);
 }
@@ -987,8 +1027,9 @@ document.getElementById('prevButton').addEventListener('click', () => {
       preId = null;
     }
     
-    // 一時停止状態をリセット
+    // 一時停止・待機状態をリセット
     isPaused = false;
+    isStepCompleted = false; // 【修正箇所】
     pausedRemainingSeconds = 0;
     pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
     
@@ -1015,18 +1056,27 @@ document.getElementById('nextButton').addEventListener('click', () => {
     pausedRemainingSeconds = 0;
     pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
     
-    // 現在のタスクの結果を記録
-    const task = sequenceTasks[sequenceIndex];
-    const now = new Date();
-    const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
-    results.push({
-      date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
-      seconds: elapsedSeconds,
-      content: `${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']} (スキップ)`
-    });
+    // 【修正箇所】まだ完了していない（スキップの場合）のみログ保存
+    if (!isStepCompleted) {
+      // 現在のタスクの結果を記録（スキップとして）
+      const task = sequenceTasks[sequenceIndex];
+      const now = new Date();
+      const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
+      results.push({
+        date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
+        seconds: elapsedSeconds,
+        content: `${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']} (スキップ)`
+      });
+    } else {
+      // 待機中から進む場合はフラグを下ろす（runNextStepでも行っているが念のため）
+      isStepCompleted = false;
+    }
     
     sequenceIndex++;
     runNextStep();
+  } else if (isStepCompleted && sequenceIndex === sequenceTasks.length - 1) {
+    // 【修正箇所】最後のステップ完了待ち状態で「次へ」を押した場合は終了処理へ
+    handleCompletion();
   }
 });
 
@@ -1140,6 +1190,7 @@ function handleCompletion() {
   
   // コントロールを非表示
   timerControls.classList.add('hidden');
+  timerSettings.classList.add('hidden'); // 【修正箇所】設定エリアも隠す
   
   // 実行予定リストをクリア
   sequenceList.innerHTML = '';
