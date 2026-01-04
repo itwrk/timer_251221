@@ -8,44 +8,70 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <style>
-    /* 編集画面専用スタイル */
-    .edit-container { max-width: 900px; margin: 0 auto; }
+    /* 編集画面専用スタイル (1行表示向け) */
+    .edit-container { max-width: 1000px; margin: 0 auto; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .back-link { color: #3498db; text-decoration: none; font-weight: bold; font-size: 16px; }
     
-    .task-edit-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 30px; overflow: hidden; }
-    .task-edit-header { background: #f8f9fa; padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    
+    .task-edit-card { 
+      background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); 
+      margin-bottom: 30px; overflow: hidden; border: 1px solid #eee;
+    }
+    .task-edit-header { 
+      background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #eee; 
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    }
     .task-title-group { display: flex; align-items: center; gap: 10px; flex: 1; }
     .task-icon-display { font-size: 24px; color: #3498db; cursor: pointer; width: 40px; text-align: center; }
-    .task-name-edit { font-size: 18px; font-weight: bold; border: 1px solid #ddd; padding: 5px 10px; border-radius: 4px; width: 200px; }
-    
-    .task-actions { display: flex; gap: 10px; }
+    .task-name-edit { 
+      font-size: 18px; font-weight: bold; border: 1px solid #ddd; padding: 5px 10px; 
+      border-radius: 4px; width: 200px; max-width: 100%;
+    }
     
     .step-list { padding: 0; }
-    .step-item { display: flex; padding: 15px; border-bottom: 1px solid #eee; gap: 10px; align-items: flex-start; flex-wrap: wrap; background: #fff; }
+    .step-item { 
+      display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #eee; 
+      gap: 8px; background: #fff; flex-wrap: wrap;
+    }
     .step-item:nth-child(even) { background: #fafafa; }
     .sortable-ghost { opacity: 0.4; background: #e8f4fd; }
     
-    .step-handle { cursor: grab; color: #ccc; padding-top: 5px; }
-    .step-col { display: flex; flex-direction: column; gap: 5px; }
-    .step-col.main { flex: 2; min-width: 200px; }
-    .step-col.time { flex: 1; min-width: 120px; }
+    .step-handle { cursor: grab; color: #ccc; padding: 5px; flex-shrink: 0; }
+    .step-handle:hover { color: #3498db; }
     
-    .step-label { font-size: 12px; color: #777; font-weight: bold; }
-    .step-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+    /* 1行レイアウト用の入力グループ */
+    .step-inputs-row { display: flex; flex: 1; gap: 5px; flex-wrap: wrap; align-items: center; }
     
-    .time-buttons { display: flex; gap: 5px; margin-top: 5px; }
-    .tb-btn { padding: 4px 8px; font-size: 11px; background: #e9ecef; border-radius: 3px; border: none; cursor: pointer; }
-    .tb-btn:hover { background: #dbe2e8; }
+    .input-wrapper { display: flex; flex-direction: column; min-width: 80px; }
+    .input-wrapper.wide { flex: 2; min-width: 150px; }
+    .input-wrapper.memo { flex: 1.5; }
+    .input-wrapper.time { flex: 0 0 130px; }
     
-    .step-delete { align-self: center; }
-    .add-step-btn-area { padding: 15px; text-align: center; background: #fff; }
+    .label-mini { font-size: 10px; color: #999; margin-bottom: 2px; white-space: nowrap; }
+    .edit-input { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 13px; }
     
+    .time-control { display: flex; flex-direction: column; gap: 2px; }
+    .time-row-main { display: flex; align-items: center; gap: 3px; }
+    .time-row-btns { display: flex; gap: 2px; justify-content: flex-end; }
+    
+    .tb-btn { padding: 2px 5px; font-size: 10px; background: #eee; border-radius: 3px; border: 1px solid #ccc; cursor: pointer; }
+    .tb-btn:hover { background: #e0e0e0; }
+    
+    .step-delete { margin-left: auto; }
+    
+    .add-step-btn-area { padding: 10px; text-align: center; background: #fff; }
     .reset-area { margin-top: 50px; padding: 20px; background: #fff0f0; border-radius: 8px; text-align: center; }
     .reset-btn { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; }
     
     .modal { z-index: 9999; }
+    
+    /* スマホ対応 */
+    @media (max-width: 600px) {
+      .step-item { align-items: flex-start; }
+      .step-inputs-row { flex-direction: column; width: 100%; align-items: stretch; }
+      .input-wrapper { width: 100%; margin-bottom: 5px; }
+      .step-handle { padding-top: 10px; }
+    }
   </style>
 </head>
 <body>
@@ -71,7 +97,7 @@
     </div>
     
     <div class="reset-area">
-        <p>※表示がおかしい、またはデータを初期状態（CSVの内容）に戻したい場合はこちら</p>
+        <p>※表示がおかしい場合やデータを初期化したい場合</p>
         <button class="reset-btn" onclick="resetAllData()">データを初期化してリロード</button>
     </div>
   </div>
@@ -97,6 +123,9 @@
       if (data) {
         allTasks = JSON.parse(data);
         renderAll();
+      } else {
+        // データがない場合はindexへ戻すか、メッセージを出す
+        document.getElementById('taskListContainer').innerHTML = '<p>データがありません。トップページでデータを読み込んでください。</p>';
       }
     }
 
@@ -129,11 +158,11 @@
               <div class="task-icon-display" onclick="openIconModalForTask('${name}')"><i class="${iconClass}"></i></div>
               <input type="text" class="task-name-edit" value="${name}" onchange="changeTaskName('${name}', this.value)">
             </div>
-            <div class="task-actions"><button class="delete-btn" onclick="deleteTaskGroup('${name}')">タスク削除</button></div>
+            <div class="task-actions"><button class="delete-btn" style="padding:5px 10px; font-size:12px;" onclick="deleteTaskGroup('${name}')">削除</button></div>
           </div>
           <div class="step-list" id="steps-${name}"></div>
           <div class="add-step-btn-area">
-            <button class="action-btn" style="width: auto;" onclick="addStepToTask('${name}')"><i class="fas fa-plus"></i> ステップを追加</button>
+            <button class="action-btn" style="width: auto; padding:8px 15px; font-size:14px;" onclick="addStepToTask('${name}')"><i class="fas fa-plus"></i> ステップ追加</button>
           </div>
         `;
         
@@ -141,45 +170,61 @@
         tasks.forEach((task, idx) => {
           const item = document.createElement('div');
           item.className = 'step-item';
-          item.setAttribute('data-id', allTasks.indexOf(task)); // IDとしてindexを使用
+          item.setAttribute('data-id', allTasks.indexOf(task));
           
           item.innerHTML = `
             <div class="step-handle"><i class="fas fa-grip-vertical"></i></div>
-            <div class="step-col main">
-              <span class="step-label">項目名</span>
-              <input type="text" class="step-input" value="${task['項目名'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '項目名', this.value)">
-              <span class="step-label" style="margin-top:5px;">読み上げ</span>
-              <input type="text" class="step-input" value="${task['読み上げテキスト'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '読み上げテキスト', this.value)">
-              <span class="step-label" style="margin-top:5px;">メモ</span>
-              <input type="text" class="step-input" value="${task['メモ'] || ''}" placeholder="メモ" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, 'メモ', this.value)">
+            <div class="step-inputs-row">
+                <div class="input-wrapper">
+                    <span class="label-mini">項目名</span>
+                    <input type="text" class="edit-input" value="${task['項目名'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '項目名', this.value)">
+                </div>
+                <div class="input-wrapper wide">
+                    <span class="label-mini">読み上げ</span>
+                    <input type="text" class="edit-input" value="${task['読み上げテキスト'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '読み上げテキスト', this.value)">
+                </div>
+                <div class="input-wrapper memo">
+                    <span class="label-mini">メモ</span>
+                    <input type="text" class="edit-input" value="${task['メモ'] || ''}" placeholder="メモ" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, 'メモ', this.value)">
+                </div>
+                <div class="input-wrapper time">
+                    <span class="label-mini">秒数</span>
+                    <div class="time-control">
+                        <div class="time-row-main">
+                            <input type="number" class="edit-input" style="text-align:center;" id="time-${allTasks.indexOf(task)}" value="${task['秒数'] || 30}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '秒数', this.value)">
+                            <span>秒</span>
+                        </div>
+                        <div class="time-row-btns">
+                            <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 30)">30</button>
+                            <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 60)">60</button>
+                            <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 180)">180</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="step-col time">
-              <span class="step-label">秒数</span>
-              <input type="number" class="step-input" id="time-${allTasks.indexOf(task)}" value="${task['秒数'] || 30}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '秒数', this.value)">
-              <div class="time-buttons">
-                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 30)">30s</button>
-                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 60)">1m</button>
-                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 180)">3m</button>
-              </div>
-            </div>
-            <div class="step-delete"><button class="delete-btn" onclick="deleteStep(${allTasks.indexOf(task)})"><i class="fas fa-trash"></i></button></div>
+            <div class="step-delete"><button class="delete-btn" style="padding:5px;" onclick="deleteStep(${allTasks.indexOf(task)})"><i class="fas fa-trash"></i></button></div>
           `;
           listContainer.appendChild(item);
         });
         
-        // SortableJSの適用（並び替え機能）
+        // Sortable設定
         new Sortable(listContainer, {
             handle: '.step-handle',
             animation: 150,
             ghostClass: 'sortable-ghost',
             onEnd: function (evt) {
-                // 並び替え後のDOM順序に基づいて「順番」を更新
+                // DOMの順番を元にデータの順番を更新
                 const items = listContainer.querySelectorAll('.step-item');
-                items.forEach((item, index) => {
-                    const taskIdx = parseInt(item.getAttribute('data-id'));
-                    allTasks[taskIdx]['順番'] = index + 1;
+                // 並び替え対象のタスクだけを抽出してインデックス再配置
+                // 簡易実装：全データを舐めて、このグループの順番だけ書き換える
+                let orderCounter = 1;
+                items.forEach(item => {
+                    const originalIdx = parseInt(item.getAttribute('data-id'));
+                    allTasks[originalIdx]['順番'] = orderCounter++;
                 });
                 saveTasks();
+                // 完全に整合性を取るため再描画
+                setTimeout(renderAll, 100);
             }
         });
         
@@ -216,7 +261,7 @@
     }
 
     function deleteStep(index) {
-      if (!confirm('このステップを削除しますか？')) return;
+      if (!confirm('削除しますか？')) return;
       allTasks.splice(index, 1);
       saveTasks(); renderAll();
     }
@@ -227,15 +272,13 @@
       saveTasks(); renderAll();
     }
     
-    // データ初期化
     function resetAllData() {
-      if(confirm('全てのデータを削除し、初期CSVファイルの状態に戻しますか？\n（編集した内容は消えます）')) {
+      if(confirm('全てのデータを削除し、初期状態に戻しますか？')) {
         localStorage.removeItem(STORAGE_KEYS.ALL_TASKS);
         window.location.href = 'index.html';
       }
     }
 
-    // アイコンモーダル
     const iconModal = document.getElementById('iconModal');
     const presetIconGrid = document.getElementById('presetIconGrid');
     function initModal() {
