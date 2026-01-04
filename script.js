@@ -79,6 +79,7 @@ const resultsTableBody   = document.querySelector('#resultsTable tbody');
 const progressRingCircle = document.querySelector('.progress-ring-circle');
 const clearResultsButton = document.getElementById('clearResultsButton');
 const copyResultsButton  = document.getElementById('copyResultsButton');
+const logTabBtns         = document.querySelectorAll('.log-tab-btn');
 
 // 新規追加セクション系
 const addTaskHeader      = document.getElementById('addTaskHeader');
@@ -125,7 +126,6 @@ function formatDuration(seconds) {
 
 // --- ヘルパー関数: 日時範囲フォーマット ---
 function formatDateRange(startDate, endDate) {
-  // 文字列ならDate型に変換
   const start = new Date(startDate);
   const end = new Date(endDate);
   
@@ -134,7 +134,6 @@ function formatDateRange(startDate, endDate) {
   
   const startStr = `${formatDatePart(start)} ${formatTimePart(start)}`;
   
-  // 同じ日かどうか判定
   if (start.toDateString() === end.toDateString()) {
     return `${startStr} 〜 ${formatTimePart(end)}`;
   } else {
@@ -272,22 +271,16 @@ window.addEventListener('DOMContentLoaded', () => {
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
   
-  // 【重要】ログタブの初期化処理
   const logTabBtns = document.querySelectorAll('.log-tab-btn');
   logTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      // 全ボタンからactiveクラスを削除
       logTabBtns.forEach(b => b.classList.remove('active'));
-      // クリックされたボタンにactiveクラスを追加
       btn.classList.add('active');
-      // 表示モードを切り替え
       currentLogView = btn.dataset.view;
-      // テーブルを再描画
       updateResultsTable();
     });
   });
 
-  // モーダル初期化
   initIconModal();
 });
 
@@ -319,7 +312,7 @@ function setupTaskButtons() {
   taskButtons.innerHTML = '';
   currentTaskDisplay.innerHTML = '<i class="fas fa-info-circle"></i> タスクを選択してください';
   timerDisplay.textContent = '--:--';
-  timerDisplay.className = 'timer'; // クラスリセット
+  timerDisplay.className = 'timer';
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
   sequenceList.innerHTML = '';
@@ -478,9 +471,9 @@ function startSequenceFor(name) {
   runNextStep();
 }
 
-// --- ステップ実行 ---
+// --- ステップ実行 (ここを修正) ---
 async function runNextStep() {
-  isStepCompleted = false; // フラグリセット
+  isStepCompleted = false;
   timerDisplay.classList.remove('overtime');
 
   if (sequenceIndex >= sequenceTasks.length) {
@@ -490,6 +483,33 @@ async function runNextStep() {
   
   const task = sequenceTasks[sequenceIndex];
   const iconClass = getTaskIconClass(task);
+  
+  // --- 【新機能】タスクジャンプ機能 ---
+  const text = task['読み上げテキスト'] || '';
+  if (text.startsWith('GO:')) {
+    // 例: "GO:手洗いルーチン" -> "手洗いルーチン"
+    const nextTaskName = text.replace('GO:', '').trim();
+    const targetTaskExists = allTasks.some(t => t['タスク名'] === nextTaskName);
+    
+    if (targetTaskExists) {
+      // ログに「ジャンプ」を記録
+      const now = new Date();
+      results.push({
+        date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
+        seconds: 0,
+        content: `${task['タスク名']} から ${nextTaskName} へ移動`
+      });
+      updateResultsTable();
+      
+      // ジャンプ実行
+      startSequenceFor(nextTaskName);
+      return; // ここで処理を終了
+    } else {
+      console.warn(`Target task "${nextTaskName}" not found.`);
+      // 見つからない場合は通常のステップとして続行（またはエラー表示）
+    }
+  }
+  // ------------------------------------
   
   timerControls.classList.remove('hidden');
   timerSettings.classList.remove('hidden');
