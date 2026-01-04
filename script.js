@@ -1,23 +1,23 @@
 // --- グローバルステート ---
-let allTasks = [];           // CSV 全データ
-let sequenceTasks = [];      // 選択中タスク名のステップ一覧
-let sequenceIndex = 0;       // 現在のステップインデックス
-let remainingSeconds = 0;    // タイマーの残り秒数
-let timerId = null;          // メインタイマー用 ID
-let preId = null;            // 事前カウントダウン用 ID
-let taskStartTime = null;    // タスク全体の開始時刻
-let results = [];            // 実行結果ログ（セッション全体）
-let isCompletionHandled = false; // 終了処理が実行済みかのフラグ
-let summaryResults = [];     // 過去のサマリー結果を保持する配列
-let pausedRemainingSeconds = 0; // 一時停止時の残り時間保持用
-let pausedStartTime = null;  // 一時停止時の開始時刻
-let isPaused = false;        // 一時停止中かどうかのフラグ
-let sortableInstance = null; // SortableJSインスタンス
-let isStepCompleted = false; // ステップ規定時間を過ぎて待機中かどうかのフラグ
-let currentRunStartIndex = 0; // 今回の実行結果がresults配列のどこから始まるかを記録
-let currentLogView = 'detail'; // 現在のログ表示モード ('detail' or 'summary')
+let allTasks = [];           
+let sequenceTasks = [];      
+let sequenceIndex = 0;       
+let remainingSeconds = 0;    
+let timerId = null;          
+let preId = null;            
+let taskStartTime = null;    
+let results = [];            
+let isCompletionHandled = false; 
+let summaryResults = [];     
+let pausedRemainingSeconds = 0; 
+let pausedStartTime = null;  
+let isPaused = false;        
+let sortableInstance = null; 
+let isStepCompleted = false; 
+let currentRunStartIndex = 0; 
+let currentLogView = 'detail'; 
 
-// --- LocalStorage キー定義 ---
+// --- LocalStorage ---
 const STORAGE_KEYS = {
   ALL_TASKS: 'lifelisten_timer_all_tasks',
   RESULTS: 'lifelisten_timer_results',
@@ -25,79 +25,58 @@ const STORAGE_KEYS = {
   LAST_CSV: 'lifelisten_timer_last_csv'
 };
 
-// --- プリセットアイコン一覧 ---
+// --- アイコンプリセット ---
 const PRESET_ICONS = [
-  'fa-solid fa-bath',           // 風呂
-  'fa-solid fa-toilet',         // トイレ
-  'fa-solid fa-bed',            // 寝る
-  'fa-solid fa-utensils',       // 食べる
-  'fa-solid fa-fire-burner',    // 料理する
-  'fa-solid fa-broom',          // 掃除する
-  'fa-solid fa-briefcase',      // 仕事する
-  'fa-solid fa-droplet',        // 汗
-  'fa-solid fa-face-smile',     // 笑顔
-  'fa-solid fa-sun',            // 晴れ
-  'fa-solid fa-person-running', // 運動
-  'fa-solid fa-person-walking', // 散歩
-  'fa-solid fa-bicycle',        // 自転車
-  'fa-solid fa-train',          // 電車
-  'fa-solid fa-shirt',          // 着替え
-  'fa-solid fa-tooth',          // 歯磨き
-  'fa-solid fa-book',           // 読書・勉強
-  'fa-solid fa-laptop',         // パソコン
-  'fa-solid fa-mobile-screen',  // スマホ
-  'fa-solid fa-cart-shopping',  // 買い物
-  'fa-solid fa-yen-sign',       // お金
-  'fa-solid fa-mug-hot',        // 休憩
-  'fa-solid fa-wine-glass',     // 飲み会・酒
-  'fa-solid fa-music',          // 音楽
-  'fa-solid fa-trash-can',      // ゴミ捨て
-  'fa-solid fa-pills',          // 薬
-  'fa-solid fa-hospital',       // 病院
-  'fa-solid fa-heart',          // ハート
-  'fa-solid fa-star',           // 星
-  'fa-solid fa-headphones'      // デフォルト
+  'fa-solid fa-bath', 'fa-solid fa-toilet', 'fa-solid fa-bed', 'fa-solid fa-utensils',
+  'fa-solid fa-fire-burner', 'fa-solid fa-broom', 'fa-solid fa-briefcase', 'fa-solid fa-droplet',
+  'fa-solid fa-face-smile', 'fa-solid fa-sun', 'fa-solid fa-person-running', 'fa-solid fa-person-walking',
+  'fa-solid fa-bicycle', 'fa-solid fa-train', 'fa-solid fa-shirt', 'fa-solid fa-tooth',
+  'fa-solid fa-book', 'fa-solid fa-laptop', 'fa-solid fa-mobile-screen', 'fa-solid fa-cart-shopping',
+  'fa-solid fa-yen-sign', 'fa-solid fa-mug-hot', 'fa-solid fa-wine-glass', 'fa-solid fa-music',
+  'fa-solid fa-trash-can', 'fa-solid fa-pills', 'fa-solid fa-hospital', 'fa-solid fa-heart',
+  'fa-solid fa-star', 'fa-solid fa-headphones'
 ];
 
-// --- DOM要素の取得 ---
-const importCsvInput     = document.getElementById('importCsvInput');
-const loadCsvButton      = document.getElementById('loadCsvButton');
-const exportCsvButton    = document.getElementById('exportCsvButton');
-const taskButtons        = document.getElementById('taskButtons');
-const currentTaskDisplay = document.getElementById('currentTaskDisplay');
-const timerDisplay       = document.getElementById('timerDisplay');
-const timerControls      = document.getElementById('timerControls');
-const timerSettings      = document.getElementById('timerSettings');
-const autoAdvanceToggle  = document.getElementById('autoAdvanceToggle');
-const pauseResumeButton  = document.getElementById('pauseResumeButton');
-const endButton          = document.getElementById('endButton');
-const prevButton         = document.getElementById('prevButton');
-const nextButton         = document.getElementById('nextButton');
-const sequenceTitle      = document.getElementById('sequenceTitle');
-const sequenceList       = document.getElementById('sequenceList');
-const resultsTableBody   = document.querySelector('#resultsTable tbody');
+// --- DOM要素 ---
+const importCsvInput = document.getElementById('importCsvInput');
+const loadCsvButton = document.getElementById('loadCsvButton');
+const exportCsvButton = document.getElementById('exportCsvButton');
+const taskButtons = document.getElementById('taskButtons');
+const currentTaskInfo = document.getElementById('currentTaskInfo');
+const timerDisplay = document.getElementById('timerDisplay');
+const timerControls = document.getElementById('timerControls');
+const timerSettings = document.getElementById('timerSettings');
+const autoAdvanceToggle = document.getElementById('autoAdvanceToggle');
+const pauseResumeButton = document.getElementById('pauseResumeButton');
+const endButton = document.getElementById('endButton');
+const prevButton = document.getElementById('prevButton');
+const nextButton = document.getElementById('nextButton');
+const sequenceTitle = document.getElementById('sequenceTitle');
+const sequenceList = document.getElementById('sequenceList');
+const resultsTableBody = document.querySelector('#resultsTable tbody');
 const progressRingCircle = document.querySelector('.progress-ring-circle');
 const clearResultsButton = document.getElementById('clearResultsButton');
-const copyResultsButton  = document.getElementById('copyResultsButton');
-const logTabBtns         = document.querySelectorAll('.log-tab-btn');
+const copyResultsButton = document.getElementById('copyResultsButton');
 
-// 新規追加セクション系
-const addTaskHeader      = document.getElementById('addTaskHeader');
-const addTaskContent     = document.getElementById('addTaskContent');
-const newTaskName        = document.getElementById('newTaskName');
-const newTaskIconButton  = document.getElementById('newTaskIconButton');
-const newTaskIconValue   = document.getElementById('newTaskIconValue');
-const addTaskButton      = document.getElementById('addTaskButton');
-const addStepSection     = document.getElementById('addStepSection');
-const newStepName        = document.getElementById('newStepName');
-const newStepText        = document.getElementById('newStepText');
-const newStepSeconds     = document.getElementById('newStepSeconds');
-const addStepButton      = document.getElementById('addStepButton');
+// 追加セクション
+const addTaskHeader = document.getElementById('addTaskHeader');
+const addTaskContent = document.getElementById('addTaskContent');
+const newTaskName = document.getElementById('newTaskName');
+const newTaskIconButton = document.getElementById('newTaskIconButton');
+const newTaskIconValue = document.getElementById('newTaskIconValue');
+const addTaskButton = document.getElementById('addTaskButton');
+const addStepSection = document.getElementById('addStepSection');
+const newStepName = document.getElementById('newStepName');
+const newStepText = document.getElementById('newStepText');
+const newStepMemo = document.getElementById('newStepMemo');
+const newStepSeconds = document.getElementById('newStepSeconds');
+const addStepButton = document.getElementById('addStepButton');
 
-// モーダル系
-const iconModal          = document.getElementById('iconModal');
-const closeModalBtn      = document.querySelector('.close-modal');
-const presetIconGrid     = document.getElementById('presetIconGrid');
+// モーダル
+const iconModal = document.getElementById('iconModal');
+const closeModalBtn = document.querySelector('.close-modal');
+const presetIconGrid = document.getElementById('presetIconGrid');
+const logTabBtns = document.querySelectorAll('.log-tab-btn');
 
 // --- プログレスリング設定 ---
 const progressRingRadius = parseInt(progressRingCircle.getAttribute('r'));
@@ -109,7 +88,7 @@ function updateProgressRing(percent) {
   progressRingCircle.style.strokeDashoffset = offset;
 }
 
-// --- ヘルパー関数: 時間フォーマット ---
+// --- ヘルパー関数 ---
 function formatDuration(seconds) {
   const absSeconds = Math.abs(seconds);
   const h = Math.floor(absSeconds / 3600);
@@ -124,7 +103,6 @@ function formatDuration(seconds) {
   return result;
 }
 
-// --- ヘルパー関数: 日時範囲フォーマット ---
 function formatDateRange(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -141,7 +119,7 @@ function formatDateRange(startDate, endDate) {
   }
 }
 
-// --- アイコンヘルパー関数 ---
+// --- アイコンヘルパー ---
 function getDefaultIconForName(taskName) {
   const taskIcons = {
     'ラットプルダウン': 'fa-solid fa-arrow-down-wide-short',
@@ -242,7 +220,8 @@ function parseAndSetupCSV(csvText) {
 }
 
 function updateCSVData() {
-  const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン'];
+  // 【修正】ヘッダーに「メモ」を追加
+  const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン', 'メモ'];
   let csvContent = headers.join(',') + '\n';
   allTasks.forEach(task => {
     const row = headers.map(header => {
@@ -271,7 +250,6 @@ window.addEventListener('DOMContentLoaded', () => {
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
   
-  const logTabBtns = document.querySelectorAll('.log-tab-btn');
   logTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       logTabBtns.forEach(b => b.classList.remove('active'));
@@ -310,7 +288,9 @@ loadCsvButton.addEventListener('click', () => {
 // --- UI構築 ---
 function setupTaskButtons() {
   taskButtons.innerHTML = '';
-  currentTaskDisplay.innerHTML = '<i class="fas fa-info-circle"></i> タスクを選択してください';
+  // 新しい表示エリアの初期化
+  currentTaskInfo.innerHTML = '<div class="task-status-message"><i class="fas fa-info-circle"></i> タスクを選択してください</div>';
+  
   timerDisplay.textContent = '--:--';
   timerDisplay.className = 'timer';
   timerControls.classList.add('hidden');
@@ -340,7 +320,7 @@ function setupTaskButtons() {
   });
 }
 
-// --- アイコンモーダル関連処理 ---
+// --- アイコンモーダル関連 ---
 let currentIconSelectCallback = null;
 
 function initIconModal() {
@@ -388,7 +368,7 @@ function addNewTask() {
   }
   
   const newTask = {
-    'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 7, '順番': 1, 'アイコン': iconValue
+    'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 30, '順番': 1, 'アイコン': iconValue, 'メモ': ''
   };
   allTasks.push(newTask);
   saveTasksData();
@@ -404,7 +384,8 @@ function addNewTask() {
 function addNewStep() {
   const stepName = newStepName.value.trim();
   const stepText = newStepText.value.trim();
-  const stepSeconds = parseInt(newStepSeconds.value) || 7;
+  const stepMemoVal = newStepMemo.value.trim();
+  const stepSeconds = parseInt(newStepSeconds.value) || 30;
   
   if (!stepName || !stepText || stepSeconds < 1) return alert('入力を確認してください');
   
@@ -416,18 +397,19 @@ function addNewStep() {
 
   const maxOrder = Math.max(...sequenceTasks.map(t => t['順番'] || 0), 0);
   const newStep = {
-    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, '順番': maxOrder + 1, 'アイコン': parentIcon
+    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, '順番': maxOrder + 1, 'アイコン': parentIcon, 'メモ': stepMemoVal
   };
   allTasks.push(newStep);
   sequenceTasks.push(newStep);
   saveTasksData();
   renderSequenceList(currentTaskName);
-  newStepName.value = ''; newStepText.value = '';
+  
+  newStepName.value = ''; newStepText.value = ''; newStepMemo.value = '';
   showSuccessMessage(addStepSection.querySelector('.section-content'), `新しいステップを追加しました`);
   updateCSVData();
 }
 
-// --- メッセージ表示 ---
+// --- メッセージ ---
 function showErrorMessage(el, msg) {
   el.classList.add('error');
   alert(msg); 
@@ -443,7 +425,7 @@ function showSuccessMessage(container, message) {
   setTimeout(() => { successDiv.remove(); }, 3000);
 }
 
-// --- メイン処理開始 ---
+// --- 実行処理 ---
 function startSequenceFor(name) {
   isCompletionHandled = false;
   isPaused = false;
@@ -471,7 +453,6 @@ function startSequenceFor(name) {
   runNextStep();
 }
 
-// --- ステップ実行 (ここを修正) ---
 async function runNextStep() {
   isStepCompleted = false;
   timerDisplay.classList.remove('overtime');
@@ -482,17 +463,14 @@ async function runNextStep() {
   }
   
   const task = sequenceTasks[sequenceIndex];
-  const iconClass = getTaskIconClass(task);
   
-  // --- 【新機能】タスクジャンプ機能 ---
+  // マジックコマンド処理
   const text = task['読み上げテキスト'] || '';
   if (text.startsWith('GO:')) {
-    // 例: "GO:手洗いルーチン" -> "手洗いルーチン"
     const nextTaskName = text.replace('GO:', '').trim();
     const targetTaskExists = allTasks.some(t => t['タスク名'] === nextTaskName);
     
     if (targetTaskExists) {
-      // ログに「ジャンプ」を記録
       const now = new Date();
       results.push({
         date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
@@ -500,24 +478,21 @@ async function runNextStep() {
         content: `${task['タスク名']} から ${nextTaskName} へ移動`
       });
       updateResultsTable();
-      
-      // ジャンプ実行
       startSequenceFor(nextTaskName);
-      return; // ここで処理を終了
-    } else {
-      console.warn(`Target task "${nextTaskName}" not found.`);
-      // 見つからない場合は通常のステップとして続行（またはエラー表示）
+      return;
     }
   }
-  // ------------------------------------
   
   timerControls.classList.remove('hidden');
   timerSettings.classList.remove('hidden');
   
+  // 初回開始時のセリフ変更
   if (sequenceIndex === 0) {
-    speak(`${task['タスク名']}を開始します`);
+    speak(`${task['タスク名']}、はじめるよ！`);
     let preCount = 5;
-    currentTaskDisplay.innerHTML = `<i class="${iconClass}"></i> ${task['タスク名']}を開始します... ${preCount}`;
+    // 表示更新
+    updateCurrentTaskDisplay(true, preCount);
+    
     let localPaused = false;
     await new Promise(resolve => {
       preId = setInterval(() => {
@@ -525,7 +500,7 @@ async function runNextStep() {
         if (localPaused) localPaused = false;
         preCount--;
         if (preCount > 0) {
-          currentTaskDisplay.innerHTML = `<i class="${iconClass}"></i> ${task['タスク名']}を開始します... ${preCount}`;
+          updateCurrentTaskDisplay(true, preCount);
         } else {
           clearInterval(preId); preId = null; resolve();
         }
@@ -552,7 +527,6 @@ async function runNextStep() {
   startTimer();
 }
 
-// --- タイマー表示更新 ---
 function updateTimerDisplay() {
   const absSeconds = Math.abs(remainingSeconds);
   const m = Math.floor(absSeconds / 60);
@@ -578,13 +552,11 @@ function updateTimerDisplay() {
   }
 }
 
-// --- 結果記録 ---
 function recordCurrentTaskResult(isSkipped = false) {
   if (sequenceIndex >= sequenceTasks.length) return;
 
   const task = sequenceTasks[sequenceIndex];
   const now = new Date();
-  
   const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
   
   let contentSuffix = '';
@@ -601,7 +573,6 @@ function recordCurrentTaskResult(isSkipped = false) {
   updateResultsTable();
 }
 
-// --- タイマー動作 ---
 function startTimer() {
   if (timerId) clearInterval(timerId);
   
@@ -626,7 +597,7 @@ function startTimer() {
   }, 1000);
 }
 
-// --- ボタンイベント ---
+// --- ボタン ---
 pauseResumeButton.addEventListener('click', () => {
   if (isPaused) {
     isPaused = false;
@@ -666,28 +637,33 @@ prevButton.addEventListener('click', () => {
   }
 });
 
+// 確認なしで即終了
 endButton.addEventListener('click', () => {
-  if (confirm('タスクを終了しますか？')) {
-    if (timerId) { clearInterval(timerId); timerId = null; }
-    if (preId) { clearInterval(preId); preId = null; }
-    if (sequenceIndex < sequenceTasks.length) {
-        recordCurrentTaskResult(remainingSeconds > 0);
-    }
-    handleCompletion();
+  if (timerId) { clearInterval(timerId); timerId = null; }
+  if (preId) { clearInterval(preId); preId = null; }
+  if (sequenceIndex < sequenceTasks.length) {
+      recordCurrentTaskResult(remainingSeconds > 0);
   }
+  handleCompletion();
 });
 
-// --- 完了処理 ---
 function handleCompletion() {
   if (isCompletionHandled) return;
   isCompletionHandled = true;
   
   const taskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : 'タスク';
-  currentTaskDisplay.innerHTML = `<i class="fas fa-check-circle" style="color: #27ae60;"></i> ${taskName}が完了しました！`;
-  currentTaskDisplay.classList.add('completion-message');
+  
+  // 新しいデザインの完了メッセージ
+  currentTaskInfo.innerHTML = `
+    <div class="task-status-message completion-message">
+      <i class="fas fa-check-circle" style="color: #27ae60; font-size: 3em; margin-bottom: 10px; display:block;"></i>
+      <div style="font-size: 1.5em; font-weight: bold; color: #2c3e50;">${taskName}</div>
+      <div style="margin-top: 10px;">完了！おつかれさま！</div>
+    </div>
+  `;
   
   playCompletionEffect();
-  speak(`${taskName}が完了しました。お疲れ様でした！`);
+  speak(`${taskName}、完了！おつかれさま！`);
   
   timerDisplay.textContent = '00:00';
   timerDisplay.classList.remove('overtime');
@@ -697,7 +673,6 @@ function handleCompletion() {
   
   const currentRunResults = results.slice(currentRunStartIndex);
   const totalExecutedSeconds = currentRunResults.reduce((sum, r) => sum + r.seconds, 0);
-  
   const endTime = new Date();
   const endTimeString = `${endTime.getFullYear()}/${endTime.getMonth()+1}/${endTime.getDate()} ${endTime.getHours().toString().padStart(2,'0')}:${endTime.getMinutes().toString().padStart(2,'0')}:${endTime.getSeconds().toString().padStart(2,'0')}`;
   const startTimeString = taskStartTime ? 
@@ -719,16 +694,40 @@ function handleCompletion() {
   endButton.style.display = 'none';
 }
 
-// --- リスト表示関連 ---
-function updateCurrentTaskDisplay() {
+// --- 【新機能】デザインされたタスク表示 ---
+function updateCurrentTaskDisplay(isPreCount = false, preCount = 0) {
   if (sequenceIndex >= sequenceTasks.length) return;
   const task = sequenceTasks[sequenceIndex];
-  const iconClass = getTaskIconClass(task);
-  let html = `<i class="${iconClass}"></i> ${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']}`;
-  if (isStepCompleted) {
-    html += ' <span style="color: #27ae60; font-weight: bold;">(完了 - 超過計測中)</span>';
-  }
-  currentTaskDisplay.innerHTML = html;
+  
+  const stepName = task['項目名'] || '';
+  const readText = task['読み上げテキスト'] || '';
+  const taskName = task['タスク名'] || '';
+  const memo = task['メモ'] || '';
+  
+  // 待機中かどうか
+  const waitingMsg = isStepCompleted ? '<span style="color: #e67e22; font-weight:bold;">(完了 - 待機中)</span>' : '';
+  
+  // 開始カウントダウン中かどうか
+  const mainText = isPreCount 
+    ? `<span style="color:#e67e22; font-weight:bold; font-size:1.2em;">開始まであと ${preCount} 秒...</span>` 
+    : readText;
+
+  // 新しいHTML構造
+  const html = `
+    <div class="task-badges">
+      <div class="task-name-badge"><i class="${getTaskIconClass(task)}"></i> ${taskName}</div>
+      <div class="step-name-badge">${stepName}</div>
+      ${waitingMsg}
+    </div>
+    
+    <div class="reading-text-box">
+      ${mainText}
+    </div>
+    
+    ${memo ? `<div class="memo-box"><i class="fas fa-sticky-note"></i> ${memo}</div>` : ''}
+  `;
+  
+  currentTaskInfo.innerHTML = html;
 }
 
 function renderSequenceList(name) {
@@ -749,50 +748,64 @@ function renderSequenceList(name) {
     
     const iconClass = getTaskIconClass(task);
     
+    // 【修正】リストアイテムの構造をスマホ向けに改善
     item.innerHTML = `
       <div class="drag-handle ${i===sequenceIndex?'disabled':''}"><i class="fas fa-grip-vertical"></i></div>
       <div class="label-container"><i class="${iconClass}"></i></div>
+      
+      <div class="seq-inputs">
+        <input type="text" class="seq-name-input" value="${task['項目名']||''}" placeholder="項目名" data-idx="${i}" onchange="updateTaskField(this, '項目名')">
+        <input type="text" class="seq-text-input" value="${task['読み上げテキスト']||''}" placeholder="読み上げ" data-idx="${i}" onchange="updateTaskField(this, '読み上げテキスト')">
+        <input type="text" class="seq-memo-input" value="${task['メモ']||''}" placeholder="メモ" data-idx="${i}" onchange="updateTaskField(this, 'メモ')">
+        
+        <div class="seq-time-wrapper">
+            <input type="number" class="seq-seconds-input" value="${task['秒数']||30}" min="1" data-idx="${i}" onchange="updateTaskField(this, '秒数')">
+            <button class="mini-qt-btn" onclick="setQuickTime(${i}, 30)">30</button>
+            <button class="mini-qt-btn" onclick="setQuickTime(${i}, 60)">60</button>
+        </div>
+      </div>
+      
+      <button class="delete-btn" onclick="deleteSequenceTask(${i})" ${i===sequenceIndex?'disabled':''}><i class="fas fa-trash"></i></button>
     `;
     
-    const nameInput = document.createElement('input');
-    nameInput.type='text'; nameInput.value=task['項目名']||''; nameInput.className='seq-name-input';
-    nameInput.onchange = (e) => {
-        task['項目名'] = e.target.value;
-        const orgIdx = allTasks.findIndex(t => t===task);
-        if(orgIdx!==-1) { allTasks[orgIdx]['項目名']=e.target.value; saveTasksData(); }
-    };
-    
-    const textInput = document.createElement('input');
-    textInput.type='text'; textInput.value=task['読み上げテキスト']||''; textInput.className='seq-text-input';
-    textInput.onchange = (e) => {
-        task['読み上げテキスト'] = e.target.value;
-        const orgIdx = allTasks.findIndex(t => t===task);
-        if(orgIdx!==-1) { allTasks[orgIdx]['読み上げテキスト']=e.target.value; saveTasksData(); }
-    };
-    
-    const secInput = document.createElement('input');
-    secInput.type='number'; secInput.value=task['秒数']||7; secInput.className='seq-seconds-input';
-    secInput.onchange = (e) => {
-        task['秒数'] = parseInt(e.target.value);
-        const orgIdx = allTasks.findIndex(t => t===task);
-        if(orgIdx!==-1) { allTasks[orgIdx]['秒数']=task['秒数']; saveTasksData(); }
-    };
-
-    const delBtn = document.createElement('button');
-    delBtn.innerHTML = '<i class="fas fa-trash"></i>';
-    delBtn.className = 'delete-btn';
-    delBtn.disabled = i === sequenceIndex;
-    delBtn.onclick = () => deleteSequenceTask(i);
-
-    item.appendChild(nameInput);
-    item.appendChild(textInput);
-    item.appendChild(secInput);
-    item.appendChild(delBtn);
     sequenceList.appendChild(item);
   });
   
   initSortable();
 }
+
+// リスト内のフィールド更新用
+window.updateTaskField = function(input, field) {
+  const idx = parseInt(input.getAttribute('data-idx'));
+  const task = sequenceTasks[idx];
+  let val = input.value;
+  if(field === '秒数') val = parseInt(val);
+  
+  task[field] = val;
+  // allTasks側も更新
+  const orgIdx = allTasks.indexOf(task);
+  if(orgIdx !== -1) {
+      allTasks[orgIdx][field] = val;
+      saveTasksData();
+  }
+  // 実行中なら表示更新
+  if(idx === sequenceIndex) updateCurrentTaskDisplay();
+};
+
+window.setQuickTime = function(idx, seconds) {
+  const task = sequenceTasks[idx];
+  task['秒数'] = seconds;
+  const orgIdx = allTasks.indexOf(task);
+  if(orgIdx !== -1) {
+      allTasks[orgIdx]['秒数'] = seconds;
+      saveTasksData();
+  }
+  renderSequenceList(sequenceTasks[0]['タスク名']);
+  if(idx === sequenceIndex) {
+      if(remainingSeconds > 0) remainingSeconds = seconds; // タイマーリセットするかは挙動によるが今回はリセットしない方が安全かも。ここでは次回の表示のために保存だけ。
+      updateTimerDisplay();
+  }
+};
 
 function deleteSequenceTask(index) {
   if (index === sequenceIndex) return alert('実行中は削除できません');
@@ -845,30 +858,21 @@ function playCompletionSound() {
   } catch(e){}
 }
 
-// --- ログ表示の更新 (詳細/サマリー 切り替え) ---
 function updateResultsTable() {
   resultsTableBody.innerHTML = '';
-  
   if (currentLogView === 'detail') {
-    // 詳細ログモード
     results.forEach(r => {
       const tr = document.createElement('tr');
       const endDate = new Date(r.date);
       const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
-      const dateRangeStr = formatDateRange(startDate, endDate);
-      
-      tr.innerHTML = `<td>${dateRangeStr}</td><td>${formatDuration(r.seconds)}</td><td>${r.content}</td>`;
+      tr.innerHTML = `<td>${formatDateRange(startDate, endDate)}</td><td>${formatDuration(r.seconds)}</td><td>${r.content}</td>`;
       resultsTableBody.appendChild(tr);
     });
   } else {
-    // タスクサマリーモード
     summaryResults.forEach(r => {
       const tr = document.createElement('tr');
-      // タスク名を抽出
       const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
       const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
-      
-      // 開始・終了時刻
       let dateRangeStr = '';
       if (r.startTime && r.endTime) {
         dateRangeStr = formatDateRange(r.startTime, r.endTime);
@@ -877,7 +881,6 @@ function updateResultsTable() {
         const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
         dateRangeStr = formatDateRange(startDate, endDate);
       }
-      
       tr.innerHTML = `<td>${dateRangeStr}</td><td>${formatDuration(r.seconds)}</td><td>${taskName}</td>`;
       resultsTableBody.appendChild(tr);
     });
@@ -890,7 +893,6 @@ clearResultsButton.onclick = () => {
 
 copyResultsButton.onclick = () => {
   if (results.length===0 && summaryResults.length===0) return alert('ログなし');
-  
   let text = '';
   if (currentLogView === 'detail') {
     text = results.map(r => {
@@ -906,7 +908,6 @@ copyResultsButton.onclick = () => {
       return `${dateRangeStr}\t${formatDuration(r.seconds)}\t${taskName}`;
     }).join('\n');
   }
-  
   navigator.clipboard.writeText(text).then(()=>alert('コピー完了'));
 };
 
