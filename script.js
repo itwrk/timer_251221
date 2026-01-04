@@ -94,24 +94,19 @@ function formatDuration(seconds) {
   const h = Math.floor(absSeconds / 3600);
   const m = Math.floor((absSeconds % 3600) / 60);
   const s = absSeconds % 60;
-  
   let result = '';
   if (h > 0) result += `${h}時間`;
   if (m > 0) result += `${m}分`;
   result += `${s}秒`;
-  
   return result;
 }
 
 function formatDateRange(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
   const formatDatePart = (d) => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   const formatTimePart = (d) => `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
-  
   const startStr = `${formatDatePart(start)} ${formatTimePart(start)}`;
-  
   if (start.toDateString() === end.toDateString()) {
     return `${startStr} 〜 ${formatTimePart(end)}`;
   } else {
@@ -119,7 +114,6 @@ function formatDateRange(startDate, endDate) {
   }
 }
 
-// --- アイコンヘルパー ---
 function getDefaultIconForName(taskName) {
   return 'fa-solid fa-headphones';
 }
@@ -131,11 +125,7 @@ function getTaskIconClass(task) {
   return 'fa-solid fa-headphones';
 }
 
-function isRestPeriod(taskText) {
-  return taskText.includes('休憩') || parseInt(taskText.match(/\d+/)?.[0] || 0) > 30;
-}
-
-// --- 音声関連ハック ---
+// --- 音声関連 ---
 function enableBackgroundAudioHack() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
@@ -150,9 +140,10 @@ document.addEventListener('click', function initBgAudio() {
 
 function speak(text) {
   if (!window.speechSynthesis) return;
+  // 読み上げキャンセル（重複防止）
+  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ja-JP';
-  speechSynthesis.cancel();
   speechSynthesis.speak(u);
   return new Promise((resolve) => {
     u.onend = () => resolve();
@@ -160,40 +151,73 @@ function speak(text) {
   });
 }
 
+// --- 報酬系SE再生（復活） ---
+function playCompletionSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // ドーパミンが出るような上昇音 (C5, E5, G5, C6)
+    const notes = [523.25, 659.25, 783.99, 1046.50]; 
+    notes.forEach((f, i) => {
+      const osc = ctx.createOscillator(); 
+      const g = ctx.createGain();
+      osc.connect(g); 
+      g.connect(ctx.destination);
+      osc.frequency.value = f;
+      // 音の立ち上がりと減衰
+      const now = ctx.currentTime + i * 0.15;
+      g.gain.setValueAtTime(0.3, now);
+      g.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now); 
+      osc.stop(now + 0.3);
+    });
+  } catch(e) {
+    console.warn('Audio play failed', e);
+  }
+}
+
+function playCompletionEffect() {
+  const overlay = document.getElementById('completionEffect');
+  const starburst = overlay.querySelector('.starburst');
+  
+  // アニメーションリセット
+  overlay.classList.remove('active');
+  starburst.classList.remove('active');
+  
+  // DOMリフロー強制
+  void overlay.offsetWidth; 
+  
+  overlay.style.visibility = 'visible';
+  requestAnimationFrame(() => { 
+    overlay.classList.add('active'); 
+    starburst.classList.add('active'); 
+  });
+  
+  // 音声を再生
+  playCompletionSound();
+  
+  setTimeout(() => {
+    overlay.classList.remove('active'); 
+    starburst.classList.remove('active'); 
+    overlay.style.visibility = 'hidden';
+  }, 1000);
+}
+
 // --- データ保存・読み込み ---
 function saveToLocalStorage(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
+  try { localStorage.setItem(key, JSON.stringify(data)); return true; } catch (e) { return false; }
 }
-
 function loadFromLocalStorage(key) {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
 }
-
 function saveTasksData() { saveToLocalStorage(STORAGE_KEYS.ALL_TASKS, allTasks); }
 function saveResultsData() {
   saveToLocalStorage(STORAGE_KEYS.RESULTS, results);
   saveToLocalStorage(STORAGE_KEYS.SUMMARY_RESULTS, summaryResults);
 }
 
-// --- CSV処理 ---
 function parseAndSetupCSV(csvText) {
   const lines = csvText.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) {
-    console.warn('CSVに有効なデータがありません');
-    return;
-  }
+  if (lines.length < 2) return console.warn('CSV無効');
   const headers = lines[0].split(',').map(h => h.trim());
   allTasks = lines.slice(1).map(line => {
     const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
@@ -204,20 +228,14 @@ function parseAndSetupCSV(csvText) {
       return obj;
     }, {});
   });
-  
-  // データ補完
   migrateData();
-  
   saveToLocalStorage(STORAGE_KEYS.LAST_CSV, csvText);
   saveTasksData();
   setupTaskButtons();
 }
 
 function migrateData() {
-  if (!allTasks || !Array.isArray(allTasks)) {
-    allTasks = [];
-    return;
-  }
+  if (!allTasks || !Array.isArray(allTasks)) { allTasks = []; return; }
   allTasks.forEach(task => {
     if (!task.hasOwnProperty('アイコン')) task['アイコン'] = 'fa-solid fa-headphones';
     if (!task.hasOwnProperty('メモ')) task['メモ'] = '';
@@ -232,9 +250,7 @@ function updateCSVData() {
   allTasks.forEach(task => {
     const row = headers.map(header => {
       let value = task[header] || '';
-      if (typeof value === 'string') {
-        value = `"${value.replace(/"/g, '""')}"`;
-      }
+      if (typeof value === 'string') value = `"${value.replace(/"/g, '""')}"`;
       return value;
     });
     csvContent += row.join(',') + '\n';
@@ -242,49 +258,31 @@ function updateCSVData() {
   saveToLocalStorage(STORAGE_KEYS.LAST_CSV, csvContent);
 }
 
-// --- 初期化ロジック ---
 function initApp() {
   const savedTasks = loadFromLocalStorage(STORAGE_KEYS.ALL_TASKS);
-  
   if (savedTasks && Array.isArray(savedTasks) && savedTasks.length > 0) {
     allTasks = savedTasks;
     migrateData();
     setupTaskButtons();
   } else {
-    fetch('firstdata.csv')
-      .then(res => {
-        if (!res.ok) throw new Error('Network response was not ok');
-        return res.text();
-      })
-      .then(text => {
-        parseAndSetupCSV(text);
-      })
-      .catch(err => {
-        console.error('Failed to load firstdata.csv:', err);
-      });
+    fetch('firstdata.csv').then(res => res.ok ? res.text() : null)
+      .then(text => { if(text) parseAndSetupCSV(text); });
   }
-
   const savedResults = loadFromLocalStorage(STORAGE_KEYS.RESULTS);
   if (savedResults) results = savedResults;
   const savedSummary = loadFromLocalStorage(STORAGE_KEYS.SUMMARY_RESULTS);
-  if (savedSummary) {
-    summaryResults = savedSummary;
-    updateResultsTable();
-  }
+  if (savedSummary) { summaryResults = savedSummary; updateResultsTable(); }
 }
 
-// ページ読み込み時
 window.addEventListener('DOMContentLoaded', () => {
   initApp();
   updateProgressRing(100);
-  
   addTaskHeader.addEventListener('click', () => {
     addTaskContent.classList.toggle('hidden');
     addTaskHeader.classList.toggle('active');
   });
   addTaskButton.addEventListener('click', addNewTask);
   addStepButton.addEventListener('click', addNewStep);
-  
   logTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       logTabBtns.forEach(b => b.classList.remove('active'));
@@ -293,15 +291,10 @@ window.addEventListener('DOMContentLoaded', () => {
       updateResultsTable();
     });
   });
-
   initIconModal();
 });
 
-// 【修正】他のページから戻ってきた時（bfcache対策）にも初期化を走らせる
-window.addEventListener('pageshow', (event) => {
-  // ページが表示されるたびにデータを再読み込み
-  initApp();
-});
+window.addEventListener('pageshow', () => initApp());
 
 loadCsvButton.addEventListener('click', () => {
   const file = importCsvInput.files[0];
@@ -314,28 +307,14 @@ loadCsvButton.addEventListener('click', () => {
 // --- UI構築 ---
 function setupTaskButtons() {
   taskButtons.innerHTML = '';
-  currentTaskInfo.innerHTML = '<div class="task-status-message"><i class="fas fa-info-circle"></i> タスクを選択してください</div>';
-  timerDisplay.textContent = '--:--';
-  timerDisplay.className = 'timer';
-  timerControls.classList.add('hidden');
-  timerSettings.classList.add('hidden');
-  sequenceList.innerHTML = '';
-  sequenceTitle.innerHTML = '<i class="fas fa-list-ol"></i> 実行予定のタスク';
+  // 【修正】リセット時の表示を確実に
+  resetActiveTaskDisplay();
   
-  updateProgressRing(100);
-  addStepSection.classList.add('hidden');
-
-  prevButton.style.display = '';
-  nextButton.style.display = '';
-  endButton.style.display = '';
-
   const names = [...new Set(allTasks.map(t=>t['タスク名']))];
-  
   if (names.length === 0) {
-    taskButtons.innerHTML = '<p>タスクがありません。CSVを読み込むか、新規作成してください。</p>';
+    taskButtons.innerHTML = '<p>タスクがありません。</p>';
     return;
   }
-
   names.forEach(name => {
     const firstTaskData = allTasks.find(t => t['タスク名'] === name);
     const iconClass = getTaskIconClass(firstTaskData);
@@ -343,9 +322,47 @@ function setupTaskButtons() {
     const btn = document.createElement('button');
     btn.innerHTML = `<i class="${iconClass}"></i> ${name}`;
     btn.classList.add('task-btn');
-    btn.addEventListener('click', ()=> startSequenceFor(name));
+    
+    // 【修正】タスクボタンクリック時の処理：実行中なら停止して次へ
+    btn.addEventListener('click', () => {
+      // 既にタイマーが動いていれば強制停止
+      if (timerId || preId) {
+        forceStopTask();
+      }
+      // 新しいタスクを開始
+      startSequenceFor(name);
+    });
+    
     taskButtons.appendChild(btn);
   });
+}
+
+function resetActiveTaskDisplay() {
+  currentTaskInfo.innerHTML = '<div class="task-status-message"><i class="fas fa-info-circle"></i> タスクを選択してください</div>';
+  timerDisplay.textContent = '--:--';
+  timerDisplay.className = 'timer';
+  updateProgressRing(100);
+  timerControls.classList.add('hidden');
+  timerSettings.classList.add('hidden');
+  addStepSection.classList.add('hidden');
+  sequenceList.innerHTML = '';
+  sequenceTitle.innerHTML = '<i class="fas fa-list-ol"></i> 実行予定のタスク';
+  
+  // ボタン表示リセット
+  prevButton.style.display = '';
+  nextButton.style.display = '';
+  endButton.style.display = '';
+}
+
+// --- 強制停止処理 ---
+function forceStopTask() {
+  if (timerId) clearInterval(timerId);
+  if (preId) clearInterval(preId);
+  timerId = null;
+  preId = null;
+  isPaused = false;
+  // ここではログ保存等はせず、クリーンにリセットする
+  // もし途中経過を保存したい場合は recordCurrentTaskResult() を呼ぶ
 }
 
 // --- アイコンモーダル ---
@@ -377,25 +394,17 @@ function selectIcon(iconClass) {
   iconModal.classList.add('hidden');
 }
 
-// --- タスク処理 ---
+// --- タスク/ステップ追加 ---
 function addNewTask() {
   const taskName = newTaskName.value.trim();
   const iconValue = newTaskIconValue.value;
-  if (!taskName) return alert('タスク名を入力してください');
-  if (allTasks.some(t => t['タスク名'] === taskName)) return alert('このタスク名は既に存在します');
-  
-  const newTask = {
+  if (!taskName) return alert('タスク名を入力');
+  if (allTasks.some(t => t['タスク名'] === taskName)) return alert('既存の名前です');
+  allTasks.push({
     'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 30, '順番': 1, 'アイコン': iconValue, 'メモ': ''
-  };
-  allTasks.push(newTask);
-  saveTasksData();
-  setupTaskButtons();
+  });
+  saveTasksData(); setupTaskButtons(); updateCSVData();
   newTaskName.value = '';
-  newTaskIconValue.value = 'fa-solid fa-headphones';
-  newTaskIconButton.innerHTML = '<i class="fa-solid fa-headphones"></i> <span>アイコンを変更</span>';
-  
-  alert(`タスク「${taskName}」を追加しました`);
-  updateCSVData();
 }
 
 function addNewStep() {
@@ -403,37 +412,28 @@ function addNewStep() {
   const stepText = newStepText.value.trim();
   const stepMemoVal = newStepMemo.value.trim();
   const stepSeconds = parseInt(newStepSeconds.value) || 30;
-  
-  if (!stepName || !stepText) return alert('入力を確認してください');
-  if (sequenceTasks.length === 0) return alert('タスクを選択してください');
+  if (!stepName || !stepText) return alert('入力不備');
+  if (sequenceTasks.length === 0) return alert('タスク未選択');
   
   const currentTaskName = sequenceTasks[0]['タスク名'];
   const parentTask = allTasks.find(t => t['タスク名'] === currentTaskName);
-  const parentIcon = parentTask ? parentTask['アイコン'] : 'fa-solid fa-headphones';
+  const currentMaxOrder = sequenceTasks.length > 0 ? Math.max(...sequenceTasks.map(t => t['順番'] || 0)) : 0;
   
-  const currentMaxOrder = sequenceTasks.length > 0 
-    ? Math.max(...sequenceTasks.map(t => t['順番'] || 0)) 
-    : 0;
-
   const newStep = {
     'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, 
-    '順番': currentMaxOrder + 1, 'アイコン': parentIcon, 'メモ': stepMemoVal
+    '順番': currentMaxOrder + 1, 'アイコン': parentTask ? parentTask['アイコン'] : '', 'メモ': stepMemoVal
   };
-  
   allTasks.push(newStep);
   if (currentTaskName === sequenceTasks[0]['タスク名']) {
-      sequenceTasks.push(newStep);
-      renderSequenceList(currentTaskName);
+      sequenceTasks.push(newStep); renderSequenceList(currentTaskName);
   }
-  saveTasksData();
-  
+  saveTasksData(); updateCSVData();
   newStepName.value = ''; newStepText.value = ''; newStepMemo.value = '';
-  alert('ステップを追加しました');
-  updateCSVData();
 }
 
-// --- 実行処理 ---
+// --- 実行ロジック ---
 function startSequenceFor(name) {
+  // 状態リセット
   isCompletionHandled = false;
   isPaused = false;
   pausedRemainingSeconds = 0;
@@ -443,7 +443,7 @@ function startSequenceFor(name) {
   
   prevButton.style.display = '';
   nextButton.style.display = '';
-  endButton.style.display = '';
+  endButton.style.display = ''; // 終了ボタンも表示
   
   pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
   timerDisplay.className = 'timer';
@@ -470,6 +470,7 @@ async function runNextStep() {
   
   const task = sequenceTasks[sequenceIndex];
   
+  // マジックコマンド
   const text = task['読み上げテキスト'] || '';
   if (text.startsWith('GO:')) {
     const nextTaskName = text.replace('GO:', '').trim();
@@ -563,7 +564,7 @@ function recordCurrentTaskResult(isSkipped = false) {
   updateResultsTable();
 }
 
-// --- ボタン ---
+// --- ボタンイベント ---
 pauseResumeButton.addEventListener('click', () => {
   if (isPaused) {
     isPaused = false; pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
@@ -596,16 +597,30 @@ prevButton.addEventListener('click', () => {
   }
 });
 
+// 【修正】終了ボタンの挙動：即時停止・リセット
 endButton.addEventListener('click', () => {
-  if (timerId) clearInterval(timerId); if (preId) clearInterval(preId);
-  if (sequenceIndex < sequenceTasks.length) recordCurrentTaskResult(remainingSeconds > 0);
+  if (isCompletionHandled) return; // 既に終了処理中なら無視
+  
+  // タイマー停止
+  if (timerId) clearInterval(timerId); timerId = null;
+  if (preId) clearInterval(preId); preId = null;
+  
+  // ログ記録（現在のステップまでの分）
+  if (sequenceIndex < sequenceTasks.length) {
+      recordCurrentTaskResult(remainingSeconds > 0);
+  }
+  
+  // 完了処理へ
   handleCompletion();
 });
 
 function handleCompletion() {
   if (isCompletionHandled) return;
   isCompletionHandled = true;
-  const taskName = sequenceTasks[0]['タスク名'];
+  
+  const taskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : 'タスク';
+  
+  // 画面リセット
   currentTaskInfo.innerHTML = `
     <div class="task-status-message completion-message">
       <i class="fas fa-check-circle" style="color: #27ae60; font-size: 3em; margin-bottom: 10px; display:block;"></i>
@@ -613,13 +628,19 @@ function handleCompletion() {
       <div style="margin-top: 10px;">完了！おつかれさま！</div>
     </div>
   `;
-  playCompletionEffect();
-  speak(`${taskName}、完了！おつかれさま！`);
-  timerDisplay.textContent = '00:00';
-  updateProgressRing(0);
+  
+  // コントロール非表示
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
+  timerDisplay.textContent = '00:00';
+  timerDisplay.classList.remove('overtime');
+  updateProgressRing(0);
   
+  // 音声・演出
+  playCompletionEffect();
+  speak(`${taskName}、完了！おつかれさま！`);
+  
+  // サマリー記録
   const currentRun = results.slice(currentRunStartIndex);
   const totalSec = currentRun.reduce((sum, r) => sum + r.seconds, 0);
   summaryResults.push({
@@ -628,7 +649,11 @@ function handleCompletion() {
   });
   saveResultsData();
   updateResultsTable();
-  prevButton.style.display = 'none'; nextButton.style.display = 'none'; endButton.style.display = 'none';
+  
+  // ボタンを隠す
+  prevButton.style.display = 'none';
+  nextButton.style.display = 'none';
+  endButton.style.display = 'none';
 }
 
 function updateCurrentTaskDisplay(isPreCount = false, preCount = 0) {
@@ -657,7 +682,6 @@ function renderSequenceList(name) {
     
     const item = document.createElement('div');
     item.className = 'sequence-item' + (i === sequenceIndex ? ' active' : '') + (isStepCompleted && i === sequenceIndex ? ' waiting-next' : '');
-    item.setAttribute('data-index', i);
     
     item.innerHTML = `
       <div class="drag-handle ${i===sequenceIndex?'disabled':''}"><i class="fas fa-grip-vertical"></i></div>
