@@ -6,6 +6,7 @@
   <title>タスク編集 - ライフリッスンタイマー</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <style>
     /* 編集画面専用スタイル */
     .edit-container { max-width: 900px; margin: 0 auto; }
@@ -22,9 +23,11 @@
     .task-actions { display: flex; gap: 10px; }
     
     .step-list { padding: 0; }
-    .step-item { display: flex; padding: 15px; border-bottom: 1px solid #eee; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+    .step-item { display: flex; padding: 15px; border-bottom: 1px solid #eee; gap: 10px; align-items: flex-start; flex-wrap: wrap; background: #fff; }
     .step-item:nth-child(even) { background: #fafafa; }
+    .sortable-ghost { opacity: 0.4; background: #e8f4fd; }
     
+    .step-handle { cursor: grab; color: #ccc; padding-top: 5px; }
     .step-col { display: flex; flex-direction: column; gap: 5px; }
     .step-col.main { flex: 2; min-width: 200px; }
     .step-col.time { flex: 1; min-width: 120px; }
@@ -37,10 +40,11 @@
     .tb-btn:hover { background: #dbe2e8; }
     
     .step-delete { align-self: center; }
-    
     .add-step-btn-area { padding: 15px; text-align: center; background: #fff; }
     
-    /* モーダル上書き調整 */
+    .reset-area { margin-top: 50px; padding: 20px; background: #fff0f0; border-radius: 8px; text-align: center; }
+    .reset-btn { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    
     .modal { z-index: 9999; }
   </style>
 </head>
@@ -60,21 +64,20 @@
       <a href="index.html" class="back-link"><i class="fas fa-arrow-left"></i> タイマーに戻る</a>
     </div>
 
-    <div id="taskListContainer">
-      </div>
+    <div id="taskListContainer"></div>
     
-    <div style="text-align: center; margin-top: 40px; margin-bottom: 40px;">
+    <div style="text-align: center; margin-top: 40px;">
         <a href="index.html" class="action-btn" style="text-decoration: none; display: inline-block; width: 200px; text-align: center;">完了して戻る</a>
+    </div>
+    
+    <div class="reset-area">
+        <p>※表示がおかしい、またはデータを初期状態（CSVの内容）に戻したい場合はこちら</p>
+        <button class="reset-btn" onclick="resetAllData()">データを初期化してリロード</button>
     </div>
   </div>
 
   <script>
-    // --- 共有設定 (script.jsと同じ) ---
-    const STORAGE_KEYS = {
-      ALL_TASKS: 'lifelisten_timer_all_tasks',
-      LAST_CSV: 'lifelisten_timer_last_csv'
-    };
-    
+    const STORAGE_KEYS = { ALL_TASKS: 'lifelisten_timer_all_tasks', LAST_CSV: 'lifelisten_timer_last_csv' };
     const PRESET_ICONS = [
       'fa-solid fa-bath', 'fa-solid fa-toilet', 'fa-solid fa-bed', 'fa-solid fa-utensils',
       'fa-solid fa-fire-burner', 'fa-solid fa-broom', 'fa-solid fa-briefcase', 'fa-solid fa-droplet',
@@ -87,9 +90,8 @@
     ];
 
     let allTasks = [];
-    let currentEditingTaskName = null; // アイコン変更用
+    let currentEditingTaskName = null;
 
-    // --- データ操作 ---
     function loadTasks() {
       const data = localStorage.getItem(STORAGE_KEYS.ALL_TASKS);
       if (data) {
@@ -100,61 +102,34 @@
 
     function saveTasks() {
       localStorage.setItem(STORAGE_KEYS.ALL_TASKS, JSON.stringify(allTasks));
-      // CSVも更新しておく
-      const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン', 'メモ'];
-      let csv = headers.join(',') + '\n';
-      allTasks.forEach(t => {
-        const row = headers.map(h => {
-          let v = t[h] || '';
-          if (typeof v === 'string') v = `"${v.replace(/"/g, '""')}"`;
-          return v;
-        });
-        csv += row.join(',') + '\n';
-      });
-      localStorage.setItem(STORAGE_KEYS.LAST_CSV, csv);
     }
 
-    // --- 描画 ---
     function renderAll() {
       const container = document.getElementById('taskListContainer');
       container.innerHTML = '';
       
-      // タスク名でグループ化
       const taskGroups = {};
-      const taskNames = []; // 順序保持用
-      
+      const taskNames = [];
       allTasks.forEach(task => {
         const name = task['タスク名'];
-        if (!taskGroups[name]) {
-          taskGroups[name] = [];
-          taskNames.push(name);
-        }
+        if (!taskGroups[name]) { taskGroups[name] = []; taskNames.push(name); }
         taskGroups[name].push(task);
       });
 
       taskNames.forEach(name => {
         const tasks = taskGroups[name];
-        // 順番でソート
         tasks.sort((a, b) => (a['順番'] || 0) - (b['順番'] || 0));
-        
-        // 親タスクのアイコン（最初のステップのものを使用）
         const iconClass = tasks[0]['アイコン'] || 'fa-solid fa-headphones';
 
         const card = document.createElement('div');
         card.className = 'task-edit-card';
-        
-        // ヘッダー
         card.innerHTML = `
           <div class="task-edit-header">
             <div class="task-title-group">
-              <div class="task-icon-display" onclick="openIconModalForTask('${name}')">
-                <i class="${iconClass}"></i>
-              </div>
+              <div class="task-icon-display" onclick="openIconModalForTask('${name}')"><i class="${iconClass}"></i></div>
               <input type="text" class="task-name-edit" value="${name}" onchange="changeTaskName('${name}', this.value)">
             </div>
-            <div class="task-actions">
-              <button class="delete-btn" onclick="deleteTaskGroup('${name}')">タスクごと削除</button>
-            </div>
+            <div class="task-actions"><button class="delete-btn" onclick="deleteTaskGroup('${name}')">タスク削除</button></div>
           </div>
           <div class="step-list" id="steps-${name}"></div>
           <div class="add-step-btn-area">
@@ -163,114 +138,106 @@
         `;
         
         const listContainer = card.querySelector(`#steps-${name}`);
-        
         tasks.forEach((task, idx) => {
           const item = document.createElement('div');
           item.className = 'step-item';
+          item.setAttribute('data-id', allTasks.indexOf(task)); // IDとしてindexを使用
           
           item.innerHTML = `
+            <div class="step-handle"><i class="fas fa-grip-vertical"></i></div>
             <div class="step-col main">
               <span class="step-label">項目名</span>
-              <input type="text" class="step-input" value="${task['項目名'] || ''}" onchange="updateStepValue('${name}', ${idx}, '項目名', this.value)">
+              <input type="text" class="step-input" value="${task['項目名'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '項目名', this.value)">
               <span class="step-label" style="margin-top:5px;">読み上げ</span>
-              <input type="text" class="step-input" value="${task['読み上げテキスト'] || ''}" onchange="updateStepValue('${name}', ${idx}, '読み上げテキスト', this.value)">
+              <input type="text" class="step-input" value="${task['読み上げテキスト'] || ''}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '読み上げテキスト', this.value)">
               <span class="step-label" style="margin-top:5px;">メモ</span>
-              <input type="text" class="step-input" value="${task['メモ'] || ''}" placeholder="メモを入力" onchange="updateStepValue('${name}', ${idx}, 'メモ', this.value)">
+              <input type="text" class="step-input" value="${task['メモ'] || ''}" placeholder="メモ" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, 'メモ', this.value)">
             </div>
-            
             <div class="step-col time">
               <span class="step-label">秒数</span>
-              <input type="number" class="step-input" id="time-${name}-${idx}" value="${task['秒数'] || 30}" onchange="updateStepValue('${name}', ${idx}, '秒数', this.value)">
+              <input type="number" class="step-input" id="time-${allTasks.indexOf(task)}" value="${task['秒数'] || 30}" onchange="updateTaskByIndex(${allTasks.indexOf(task)}, '秒数', this.value)">
               <div class="time-buttons">
-                <button class="tb-btn" onclick="setStepTime('${name}', ${idx}, 30)">30s</button>
-                <button class="tb-btn" onclick="setStepTime('${name}', ${idx}, 60)">1m</button>
-                <button class="tb-btn" onclick="setStepTime('${name}', ${idx}, 180)">3m</button>
+                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 30)">30s</button>
+                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 60)">1m</button>
+                <button class="tb-btn" onclick="setStepTime(${allTasks.indexOf(task)}, 180)">3m</button>
               </div>
             </div>
-            
-            <div class="step-delete">
-              <button class="delete-btn" onclick="deleteStep('${name}', ${idx})"><i class="fas fa-trash"></i></button>
-            </div>
+            <div class="step-delete"><button class="delete-btn" onclick="deleteStep(${allTasks.indexOf(task)})"><i class="fas fa-trash"></i></button></div>
           `;
           listContainer.appendChild(item);
+        });
+        
+        // SortableJSの適用（並び替え機能）
+        new Sortable(listContainer, {
+            handle: '.step-handle',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: function (evt) {
+                // 並び替え後のDOM順序に基づいて「順番」を更新
+                const items = listContainer.querySelectorAll('.step-item');
+                items.forEach((item, index) => {
+                    const taskIdx = parseInt(item.getAttribute('data-id'));
+                    allTasks[taskIdx]['順番'] = index + 1;
+                });
+                saveTasks();
+            }
         });
         
         container.appendChild(card);
       });
     }
 
-    // --- 各種操作 ---
-    function updateStepValue(taskName, index, field, value) {
-      // 該当タスクグループを抽出
-      const tasks = allTasks.filter(t => t['タスク名'] === taskName).sort((a,b)=>(a['順番']||0)-(b['順番']||0));
-      const targetTask = tasks[index];
-      
-      // allTasks内の参照を更新
+    function updateTaskByIndex(index, field, value) {
       if (field === '秒数') value = parseInt(value);
-      targetTask[field] = value;
+      allTasks[index][field] = value;
       saveTasks();
     }
 
-    function setStepTime(taskName, index, seconds) {
-      document.getElementById(`time-${taskName}-${index}`).value = seconds;
-      updateStepValue(taskName, index, '秒数', seconds);
+    function setStepTime(index, seconds) {
+      document.getElementById(`time-${index}`).value = seconds;
+      updateTaskByIndex(index, '秒数', seconds);
     }
 
     function changeTaskName(oldName, newName) {
       if (!newName) return;
-      allTasks.forEach(t => {
-        if (t['タスク名'] === oldName) t['タスク名'] = newName;
-      });
-      saveTasks();
-      renderAll();
+      allTasks.forEach(t => { if (t['タスク名'] === oldName) t['タスク名'] = newName; });
+      saveTasks(); renderAll();
     }
 
     function addStepToTask(taskName) {
-      // そのタスクの最後の順番を取得
       const tasks = allTasks.filter(t => t['タスク名'] === taskName);
       const maxOrder = Math.max(...tasks.map(t => t['順番'] || 0));
       const parentIcon = tasks[0]['アイコン'] || '';
-      
       allTasks.push({
-        'タスク名': taskName,
-        '項目名': '新規ステップ',
-        '読み上げテキスト': '新規ステップです',
-        '秒数': 30,
-        '順番': maxOrder + 1,
-        'アイコン': parentIcon,
-        'メモ': ''
+        'タスク名': taskName, '項目名': '新規ステップ', '読み上げテキスト': '新規ステップ', '秒数': 30,
+        '順番': maxOrder + 1, 'アイコン': parentIcon, 'メモ': ''
       });
-      saveTasks();
-      renderAll();
+      saveTasks(); renderAll();
     }
 
-    function deleteStep(taskName, index) {
+    function deleteStep(index) {
       if (!confirm('このステップを削除しますか？')) return;
-      const tasks = allTasks.filter(t => t['タスク名'] === taskName).sort((a,b)=>(a['順番']||0)-(b['順番']||0));
-      const targetTask = tasks[index];
-      
-      const idx = allTasks.indexOf(targetTask);
-      if (idx > -1) allTasks.splice(idx, 1);
-      
-      // 順番振り直し
-      const remainingTasks = allTasks.filter(t => t['タスク名'] === taskName).sort((a,b)=>(a['順番']||0)-(b['順番']||0));
-      remainingTasks.forEach((t, i) => t['順番'] = i + 1);
-      
-      saveTasks();
-      renderAll();
+      allTasks.splice(index, 1);
+      saveTasks(); renderAll();
     }
 
     function deleteTaskGroup(taskName) {
-      if (!confirm(`タスク「${taskName}」と全てのステップを削除しますか？`)) return;
+      if (!confirm(`タスク「${taskName}」を全て削除しますか？`)) return;
       allTasks = allTasks.filter(t => t['タスク名'] !== taskName);
-      saveTasks();
-      renderAll();
+      saveTasks(); renderAll();
+    }
+    
+    // データ初期化
+    function resetAllData() {
+      if(confirm('全てのデータを削除し、初期CSVファイルの状態に戻しますか？\n（編集した内容は消えます）')) {
+        localStorage.removeItem(STORAGE_KEYS.ALL_TASKS);
+        window.location.href = 'index.html';
+      }
     }
 
-    // --- アイコンモーダル ---
+    // アイコンモーダル
     const iconModal = document.getElementById('iconModal');
     const presetIconGrid = document.getElementById('presetIconGrid');
-    
     function initModal() {
       presetIconGrid.innerHTML = '';
       PRESET_ICONS.forEach(icon => {
@@ -280,31 +247,21 @@
         div.onclick = () => selectIcon(icon);
         presetIconGrid.appendChild(div);
       });
-      
       document.querySelector('.close-modal').onclick = () => iconModal.classList.add('hidden');
       window.onclick = (e) => { if (e.target === iconModal) iconModal.classList.add('hidden'); };
     }
-
     function openIconModalForTask(taskName) {
       currentEditingTaskName = taskName;
       iconModal.classList.remove('hidden');
     }
-
     function selectIcon(iconClass) {
       if (currentEditingTaskName) {
-        // そのタスク名の全てのステップのアイコンを一括変更
-        allTasks.forEach(t => {
-          if (t['タスク名'] === currentEditingTaskName) {
-            t['アイコン'] = iconClass;
-          }
-        });
-        saveTasks();
-        renderAll();
+        allTasks.forEach(t => { if (t['タスク名'] === currentEditingTaskName) t['アイコン'] = iconClass; });
+        saveTasks(); renderAll();
       }
       iconModal.classList.add('hidden');
     }
 
-    // --- 初期化 ---
     document.addEventListener('DOMContentLoaded', () => {
       loadTasks();
       initModal();

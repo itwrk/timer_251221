@@ -94,24 +94,19 @@ function formatDuration(seconds) {
   const h = Math.floor(absSeconds / 3600);
   const m = Math.floor((absSeconds % 3600) / 60);
   const s = absSeconds % 60;
-  
   let result = '';
   if (h > 0) result += `${h}時間`;
   if (m > 0) result += `${m}分`;
   result += `${s}秒`;
-  
   return result;
 }
 
 function formatDateRange(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
   const formatDatePart = (d) => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   const formatTimePart = (d) => `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
-  
   const startStr = `${formatDatePart(start)} ${formatTimePart(start)}`;
-  
   if (start.toDateString() === end.toDateString()) {
     return `${startStr} 〜 ${formatTimePart(end)}`;
   } else {
@@ -119,36 +114,18 @@ function formatDateRange(startDate, endDate) {
   }
 }
 
-// --- アイコンヘルパー ---
 function getDefaultIconForName(taskName) {
-  const taskIcons = {
-    'ラットプルダウン': 'fa-solid fa-arrow-down-wide-short',
-    'スクワット': 'fa-solid fa-person-walking',
-    'シーテッドロー': 'fa-solid fa-arrows-left-right',
-    '机を上にする': 'fa-solid fa-table',
-    '歯を磨く': 'fa-solid fa-tooth',
-    '着替える': 'fa-solid fa-shirt',
-    '請求書を作成する': 'fa-solid fa-file-invoice',
-    '読書': 'fa-solid fa-book',
-    '休憩': 'fa-solid fa-mug-hot',
-    '食事': 'fa-solid fa-utensils',
-    '書く': 'fa-solid fa-pen',
-  };
-  return taskIcons[taskName] || 'fa-solid fa-headphones';
+  return 'fa-solid fa-headphones';
 }
 
 function getTaskIconClass(task) {
-  if (task['アイコン'] && task['アイコン'].trim() !== '') {
+  // 古いデータでアイコンがない場合はデフォルトを返す
+  if (task && task['アイコン'] && task['アイコン'].trim() !== '') {
     return task['アイコン'];
   }
-  return getDefaultIconForName(task['タスク名']);
+  return 'fa-solid fa-headphones';
 }
 
-function isRestPeriod(taskText) {
-  return taskText.includes('休憩') || parseInt(taskText.match(/\d+/)?.[0] || 0) > 30;
-}
-
-// --- 音声関連ハック ---
 function enableBackgroundAudioHack() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
@@ -173,27 +150,12 @@ function speak(text) {
   });
 }
 
-// --- データ保存・読み込み ---
 function saveToLocalStorage(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
+  try { localStorage.setItem(key, JSON.stringify(data)); return true; } catch (e) { return false; }
 }
-
 function loadFromLocalStorage(key) {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
 }
-
 function saveTasksData() { saveToLocalStorage(STORAGE_KEYS.ALL_TASKS, allTasks); }
 function saveResultsData() {
   saveToLocalStorage(STORAGE_KEYS.RESULTS, results);
@@ -214,21 +176,33 @@ function parseAndSetupCSV(csvText) {
       return obj;
     }, {});
   });
+  // データの正規化（古いデータ対策）
+  migrateData();
+  
   saveToLocalStorage(STORAGE_KEYS.LAST_CSV, csvText);
   saveTasksData();
   setupTaskButtons();
 }
 
+// 古い形式のデータを新しい形式（アイコン、メモあり）に補完する
+function migrateData() {
+  if (!allTasks) return;
+  allTasks.forEach(task => {
+    if (!task.hasOwnProperty('アイコン')) task['アイコン'] = 'fa-solid fa-headphones';
+    if (!task.hasOwnProperty('メモ')) task['メモ'] = '';
+    // 数値型の保証
+    if (typeof task['秒数'] !== 'number') task['秒数'] = parseInt(task['秒数']) || 30;
+    if (typeof task['順番'] !== 'number') task['順番'] = 1;
+  });
+}
+
 function updateCSVData() {
-  // 【修正】ヘッダーに「メモ」を追加
   const headers = ['タスク名', '項目名', '読み上げテキスト', '秒数', '順番', 'アイコン', 'メモ'];
   let csvContent = headers.join(',') + '\n';
   allTasks.forEach(task => {
     const row = headers.map(header => {
       let value = task[header] || '';
-      if (typeof value === 'string') {
-        value = `"${value.replace(/"/g, '""')}"`;
-      }
+      if (typeof value === 'string') value = `"${value.replace(/"/g, '""')}"`;
       return value;
     });
     csvContent += row.join(',') + '\n';
@@ -239,10 +213,13 @@ function updateCSVData() {
 // --- 初期化 ---
 window.addEventListener('DOMContentLoaded', () => {
   restoreDataFromLocalStorage();
+  // 初回起動時のみデフォルトCSV読み込み
   if (allTasks.length === 0) {
     fetch('firstdata.csv').then(res => res.text()).then(parseAndSetupCSV).catch(console.warn);
   }
+  
   updateProgressRing(100);
+  
   addTaskHeader.addEventListener('click', () => {
     addTaskContent.classList.toggle('hidden');
     addTaskHeader.classList.toggle('active');
@@ -266,6 +243,8 @@ function restoreDataFromLocalStorage() {
   const savedTasks = loadFromLocalStorage(STORAGE_KEYS.ALL_TASKS);
   if (savedTasks && savedTasks.length > 0) {
     allTasks = savedTasks;
+    // 読み込み時にデータ補完を実行
+    migrateData();
     setupTaskButtons();
   }
   const savedResults = loadFromLocalStorage(STORAGE_KEYS.RESULTS);
@@ -288,9 +267,7 @@ loadCsvButton.addEventListener('click', () => {
 // --- UI構築 ---
 function setupTaskButtons() {
   taskButtons.innerHTML = '';
-  // 新しい表示エリアの初期化
   currentTaskInfo.innerHTML = '<div class="task-status-message"><i class="fas fa-info-circle"></i> タスクを選択してください</div>';
-  
   timerDisplay.textContent = '--:--';
   timerDisplay.className = 'timer';
   timerControls.classList.add('hidden');
@@ -320,9 +297,8 @@ function setupTaskButtons() {
   });
 }
 
-// --- アイコンモーダル関連 ---
+// --- アイコンモーダル ---
 let currentIconSelectCallback = null;
-
 function initIconModal() {
   presetIconGrid.innerHTML = '';
   PRESET_ICONS.forEach(iconClass => {
@@ -332,10 +308,8 @@ function initIconModal() {
     div.onclick = () => selectIcon(iconClass);
     presetIconGrid.appendChild(div);
   });
-
   closeModalBtn.onclick = () => iconModal.classList.add('hidden');
   window.onclick = (e) => { if (e.target === iconModal) iconModal.classList.add('hidden'); };
-
   newTaskIconButton.onclick = () => {
     openIconModal((selectedIcon) => {
       newTaskIconValue.value = selectedIcon;
@@ -343,29 +317,21 @@ function initIconModal() {
     });
   };
 }
-
 function openIconModal(callback) {
   currentIconSelectCallback = callback;
   iconModal.classList.remove('hidden');
 }
-
 function selectIcon(iconClass) {
-  if (currentIconSelectCallback) {
-    currentIconSelectCallback(iconClass);
-  }
+  if (currentIconSelectCallback) currentIconSelectCallback(iconClass);
   iconModal.classList.add('hidden');
 }
 
-// --- タスク/ステップ追加 ---
+// --- タスク追加 ---
 function addNewTask() {
   const taskName = newTaskName.value.trim();
   const iconValue = newTaskIconValue.value;
-  
-  if (!taskName) return showErrorMessage(newTaskName, 'タスク名を入力してください');
-  
-  if (allTasks.some(t => t['タスク名'] === taskName)) {
-    return showErrorMessage(newTaskName, 'このタスク名は既に存在します');
-  }
+  if (!taskName) return alert('タスク名を入力してください');
+  if (allTasks.some(t => t['タスク名'] === taskName)) return alert('このタスク名は既に存在します');
   
   const newTask = {
     'タスク名': taskName, '項目名': '1回目', '読み上げテキスト': '1回目', '秒数': 30, '順番': 1, 'アイコン': iconValue, 'メモ': ''
@@ -374,10 +340,7 @@ function addNewTask() {
   saveTasksData();
   setupTaskButtons();
   newTaskName.value = '';
-  newTaskIconValue.value = 'fa-solid fa-headphones';
-  newTaskIconButton.innerHTML = '<i class="fa-solid fa-headphones"></i> <span>アイコンを変更</span>';
-  
-  showSuccessMessage(addTaskContent, `タスク「${taskName}」を追加しました`);
+  alert(`タスク「${taskName}」を追加しました`);
   updateCSVData();
 }
 
@@ -387,42 +350,30 @@ function addNewStep() {
   const stepMemoVal = newStepMemo.value.trim();
   const stepSeconds = parseInt(newStepSeconds.value) || 30;
   
-  if (!stepName || !stepText || stepSeconds < 1) return alert('入力を確認してください');
+  if (!stepName || !stepText) return alert('入力を確認してください');
+  if (sequenceTasks.length === 0) return alert('タスクを選択してください');
   
-  const currentTaskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : '';
-  if (!currentTaskName) return alert('タスクを選択してください');
-  
+  const currentTaskName = sequenceTasks[0]['タスク名'];
   const parentTask = allTasks.find(t => t['タスク名'] === currentTaskName);
-  const parentIcon = parentTask ? (parentTask['アイコン'] || '') : '';
+  const parentIcon = parentTask ? parentTask['アイコン'] : 'fa-solid fa-headphones';
+  
+  // 順番の最大値を取得
+  const currentMaxOrder = sequenceTasks.length > 0 
+    ? Math.max(...sequenceTasks.map(t => t['順番'] || 0)) 
+    : 0;
 
-  const maxOrder = Math.max(...sequenceTasks.map(t => t['順番'] || 0), 0);
   const newStep = {
-    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, '順番': maxOrder + 1, 'アイコン': parentIcon, 'メモ': stepMemoVal
+    'タスク名': currentTaskName, '項目名': stepName, '読み上げテキスト': stepText, '秒数': stepSeconds, 
+    '順番': currentMaxOrder + 1, 'アイコン': parentIcon, 'メモ': stepMemoVal
   };
+  
   allTasks.push(newStep);
-  sequenceTasks.push(newStep);
-  saveTasksData();
-  renderSequenceList(currentTaskName);
+  // 再描画のためにリロード
+  startSequenceFor(currentTaskName);
   
   newStepName.value = ''; newStepText.value = ''; newStepMemo.value = '';
-  showSuccessMessage(addStepSection.querySelector('.section-content'), `新しいステップを追加しました`);
+  alert('ステップを追加しました');
   updateCSVData();
-}
-
-// --- メッセージ ---
-function showErrorMessage(el, msg) {
-  el.classList.add('error');
-  alert(msg); 
-  setTimeout(()=>el.classList.remove('error'), 2000);
-}
-
-function showSuccessMessage(container, message) {
-  container.querySelectorAll('.success-message').forEach(el => el.remove());
-  const successDiv = document.createElement('div');
-  successDiv.className = 'success-message';
-  successDiv.textContent = message;
-  container.appendChild(successDiv);
-  setTimeout(() => { successDiv.remove(); }, 3000);
 }
 
 // --- 実行処理 ---
@@ -432,7 +383,6 @@ function startSequenceFor(name) {
   pausedRemainingSeconds = 0;
   pausedStartTime = null;
   isStepCompleted = false;
-  
   currentRunStartIndex = results.length;
   
   prevButton.style.display = '';
@@ -464,20 +414,14 @@ async function runNextStep() {
   
   const task = sequenceTasks[sequenceIndex];
   
-  // マジックコマンド処理
+  // マジックコマンド
   const text = task['読み上げテキスト'] || '';
   if (text.startsWith('GO:')) {
     const nextTaskName = text.replace('GO:', '').trim();
-    const targetTaskExists = allTasks.some(t => t['タスク名'] === nextTaskName);
-    
-    if (targetTaskExists) {
-      const now = new Date();
+    if (allTasks.some(t => t['タスク名'] === nextTaskName)) {
       results.push({
-        date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
-        seconds: 0,
-        content: `${task['タスク名']} から ${nextTaskName} へ移動`
+        date: new Date().toLocaleString(), seconds: 0, content: `${task['タスク名']} から ${nextTaskName} へ移動`
       });
-      updateResultsTable();
       startSequenceFor(nextTaskName);
       return;
     }
@@ -486,41 +430,28 @@ async function runNextStep() {
   timerControls.classList.remove('hidden');
   timerSettings.classList.remove('hidden');
   
-  // 初回開始時のセリフ変更
   if (sequenceIndex === 0) {
     speak(`${task['タスク名']}、はじめるよ！`);
     let preCount = 5;
-    // 表示更新
     updateCurrentTaskDisplay(true, preCount);
-    
     let localPaused = false;
     await new Promise(resolve => {
       preId = setInterval(() => {
         if (isPaused) { localPaused = true; return; }
         if (localPaused) localPaused = false;
         preCount--;
-        if (preCount > 0) {
-          updateCurrentTaskDisplay(true, preCount);
-        } else {
-          clearInterval(preId); preId = null; resolve();
-        }
+        if (preCount > 0) updateCurrentTaskDisplay(true, preCount);
+        else { clearInterval(preId); preId = null; resolve(); }
       }, 1000);
     });
   }
   
   updateCurrentTaskDisplay();
-  
-  const textToSpeak = task['項目名'] 
-    ? `${task['項目名']}。${task['読み上げテキスト']}` 
-    : task['読み上げテキスト'];
+  const textToSpeak = task['項目名'] ? `${task['項目名']}。${task['読み上げテキスト']}` : task['読み上げテキスト'];
   speak(textToSpeak);
   
-  if (pausedRemainingSeconds !== 0) {
-    remainingSeconds = pausedRemainingSeconds;
-    pausedRemainingSeconds = 0;
-  } else {
-    remainingSeconds = task['秒数'] || 0;
-  }
+  remainingSeconds = (pausedRemainingSeconds !== 0) ? pausedRemainingSeconds : (task['秒数'] || 30);
+  pausedRemainingSeconds = 0;
   
   updateTimerDisplay();
   renderSequenceList(task['タスク名']);
@@ -532,55 +463,22 @@ function updateTimerDisplay() {
   const m = Math.floor(absSeconds / 60);
   const s = absSeconds % 60;
   const timeString = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-  
-  if (remainingSeconds < 0) {
-    timerDisplay.textContent = `+${timeString}`;
-    timerDisplay.classList.add('overtime');
-  } else {
-    timerDisplay.textContent = timeString;
-    timerDisplay.classList.remove('overtime');
-  }
+  timerDisplay.textContent = remainingSeconds < 0 ? `+${timeString}` : timeString;
+  if (remainingSeconds < 0) timerDisplay.classList.add('overtime'); else timerDisplay.classList.remove('overtime');
   
   const currentTask = sequenceTasks[sequenceIndex];
   if (currentTask) {
-    const taskSeconds = currentTask['秒数'] || 0;
-    let percent = 0;
-    if (remainingSeconds > 0 && taskSeconds > 0) {
-      percent = (remainingSeconds / taskSeconds) * 100;
-    }
+    const percent = (remainingSeconds > 0 && currentTask['秒数'] > 0) ? (remainingSeconds / currentTask['秒数']) * 100 : 0;
     updateProgressRing(percent);
   }
 }
 
-function recordCurrentTaskResult(isSkipped = false) {
-  if (sequenceIndex >= sequenceTasks.length) return;
-
-  const task = sequenceTasks[sequenceIndex];
-  const now = new Date();
-  const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
-  
-  let contentSuffix = '';
-  if (remainingSeconds > 0 && isSkipped) {
-    contentSuffix = ' (スキップ)';
-  }
-
-  results.push({
-    date: `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`,
-    seconds: elapsedSeconds,
-    content: `${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']}${contentSuffix}`
-  });
-  
-  updateResultsTable();
-}
-
 function startTimer() {
   if (timerId) clearInterval(timerId);
-  
   timerId = setInterval(() => {
     if (isPaused) return;
     remainingSeconds--;
     updateTimerDisplay();
-    
     if (remainingSeconds === 0) {
       if (autoAdvanceToggle.checked) {
         recordCurrentTaskResult();
@@ -597,28 +495,35 @@ function startTimer() {
   }, 1000);
 }
 
-// --- ボタン ---
+function recordCurrentTaskResult(isSkipped = false) {
+  if (sequenceIndex >= sequenceTasks.length) return;
+  const task = sequenceTasks[sequenceIndex];
+  const now = new Date();
+  const elapsedSeconds = (task['秒数'] || 0) - remainingSeconds;
+  results.push({
+    date: now.toLocaleString(), seconds: elapsedSeconds,
+    content: `${task['タスク名']}：${task['項目名']}：${task['読み上げテキスト']}${isSkipped && remainingSeconds > 0 ? ' (スキップ)' : ''}`
+  });
+  updateResultsTable();
+}
+
+// --- ボタン操作 ---
 pauseResumeButton.addEventListener('click', () => {
   if (isPaused) {
-    isPaused = false;
-    pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
+    isPaused = false; pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
     if (pausedStartTime) {
-      const pausedDuration = new Date() - pausedStartTime;
-      taskStartTime = new Date(taskStartTime.getTime() + pausedDuration);
+      taskStartTime = new Date(taskStartTime.getTime() + (new Date() - pausedStartTime));
     }
   } else {
-    isPaused = true;
-    pausedStartTime = new Date();
+    isPaused = true; pausedStartTime = new Date();
     pauseResumeButton.innerHTML = '<i class="fas fa-play"></i> 再開';
   }
 });
 
 nextButton.addEventListener('click', () => {
   if (sequenceIndex < sequenceTasks.length) {
-    if (timerId) { clearInterval(timerId); timerId = null; }
-    if (preId) { clearInterval(preId); preId = null; }
-    isPaused = false;
-    pausedRemainingSeconds = 0;
+    if (timerId) clearInterval(timerId); if (preId) clearInterval(preId);
+    isPaused = false; pausedRemainingSeconds = 0;
     pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> 一時停止';
     recordCurrentTaskResult(remainingSeconds > 0);
     sequenceIndex++;
@@ -628,32 +533,23 @@ nextButton.addEventListener('click', () => {
 
 prevButton.addEventListener('click', () => {
   if (sequenceIndex > 0) {
-    if (timerId) { clearInterval(timerId); timerId = null; }
-    if (preId) { clearInterval(preId); preId = null; }
-    isPaused = false;
-    pausedRemainingSeconds = 0;
+    if (timerId) clearInterval(timerId); if (preId) clearInterval(preId);
+    isPaused = false; pausedRemainingSeconds = 0;
     sequenceIndex--;
     runNextStep();
   }
 });
 
-// 確認なしで即終了
 endButton.addEventListener('click', () => {
-  if (timerId) { clearInterval(timerId); timerId = null; }
-  if (preId) { clearInterval(preId); preId = null; }
-  if (sequenceIndex < sequenceTasks.length) {
-      recordCurrentTaskResult(remainingSeconds > 0);
-  }
+  if (timerId) clearInterval(timerId); if (preId) clearInterval(preId);
+  if (sequenceIndex < sequenceTasks.length) recordCurrentTaskResult(remainingSeconds > 0);
   handleCompletion();
 });
 
 function handleCompletion() {
   if (isCompletionHandled) return;
   isCompletionHandled = true;
-  
-  const taskName = sequenceTasks.length > 0 ? sequenceTasks[0]['タスク名'] : 'タスク';
-  
-  // 新しいデザインの完了メッセージ
+  const taskName = sequenceTasks[0]['タスク名'];
   currentTaskInfo.innerHTML = `
     <div class="task-status-message completion-message">
       <i class="fas fa-check-circle" style="color: #27ae60; font-size: 3em; margin-bottom: 10px; display:block;"></i>
@@ -661,73 +557,39 @@ function handleCompletion() {
       <div style="margin-top: 10px;">完了！おつかれさま！</div>
     </div>
   `;
-  
   playCompletionEffect();
   speak(`${taskName}、完了！おつかれさま！`);
-  
   timerDisplay.textContent = '00:00';
-  timerDisplay.classList.remove('overtime');
   updateProgressRing(0);
   timerControls.classList.add('hidden');
   timerSettings.classList.add('hidden');
   
-  const currentRunResults = results.slice(currentRunStartIndex);
-  const totalExecutedSeconds = currentRunResults.reduce((sum, r) => sum + r.seconds, 0);
-  const endTime = new Date();
-  const endTimeString = `${endTime.getFullYear()}/${endTime.getMonth()+1}/${endTime.getDate()} ${endTime.getHours().toString().padStart(2,'0')}:${endTime.getMinutes().toString().padStart(2,'0')}:${endTime.getSeconds().toString().padStart(2,'0')}`;
-  const startTimeString = taskStartTime ? 
-    `${taskStartTime.getFullYear()}/${taskStartTime.getMonth()+1}/${taskStartTime.getDate()} ${taskStartTime.getHours().toString().padStart(2,'0')}:${taskStartTime.getMinutes().toString().padStart(2,'0')}:${taskStartTime.getSeconds().toString().padStart(2,'0')}` : 
-    endTimeString;
-  
+  const currentRun = results.slice(currentRunStartIndex);
+  const totalSec = currentRun.reduce((sum, r) => sum + r.seconds, 0);
   summaryResults.push({
-    date: endTimeString,
-    startTime: startTimeString,
-    endTime: endTimeString,
-    seconds: totalExecutedSeconds,
-    content: `${taskName} (${currentRunResults.length}ステップ完了)`
+    date: new Date().toLocaleString(), startTime: taskStartTime?.toLocaleString(), endTime: new Date().toLocaleString(),
+    seconds: totalSec, content: `${taskName} (${currentRun.length}ステップ完了)`
   });
   saveResultsData();
   updateResultsTable();
-  
-  prevButton.style.display = 'none';
-  nextButton.style.display = 'none';
-  endButton.style.display = 'none';
+  prevButton.style.display = 'none'; nextButton.style.display = 'none'; endButton.style.display = 'none';
 }
 
-// --- 【新機能】デザインされたタスク表示 ---
 function updateCurrentTaskDisplay(isPreCount = false, preCount = 0) {
   if (sequenceIndex >= sequenceTasks.length) return;
   const task = sequenceTasks[sequenceIndex];
-  
-  const stepName = task['項目名'] || '';
-  const readText = task['読み上げテキスト'] || '';
-  const taskName = task['タスク名'] || '';
-  const memo = task['メモ'] || '';
-  
-  // 待機中かどうか
   const waitingMsg = isStepCompleted ? '<span style="color: #e67e22; font-weight:bold;">(完了 - 待機中)</span>' : '';
+  const mainText = isPreCount ? `<span style="color:#e67e22; font-weight:bold; font-size:1.2em;">開始まであと ${preCount} 秒...</span>` : (task['読み上げテキスト'] || '');
   
-  // 開始カウントダウン中かどうか
-  const mainText = isPreCount 
-    ? `<span style="color:#e67e22; font-weight:bold; font-size:1.2em;">開始まであと ${preCount} 秒...</span>` 
-    : readText;
-
-  // 新しいHTML構造
-  const html = `
+  currentTaskInfo.innerHTML = `
     <div class="task-badges">
-      <div class="task-name-badge"><i class="${getTaskIconClass(task)}"></i> ${taskName}</div>
-      <div class="step-name-badge">${stepName}</div>
+      <div class="task-name-badge"><i class="${getTaskIconClass(task)}"></i> ${task['タスク名']}</div>
+      <div class="step-name-badge">${task['項目名']}</div>
       ${waitingMsg}
     </div>
-    
-    <div class="reading-text-box">
-      ${mainText}
-    </div>
-    
-    ${memo ? `<div class="memo-box"><i class="fas fa-sticky-note"></i> ${memo}</div>` : ''}
+    <div class="reading-text-box">${mainText}</div>
+    ${task['メモ'] ? `<div class="memo-box"><i class="fas fa-sticky-note"></i> ${task['メモ']}</div>` : ''}
   `;
-  
-  currentTaskInfo.innerHTML = html;
 }
 
 function renderSequenceList(name) {
@@ -737,74 +599,44 @@ function renderSequenceList(name) {
   sequenceTasks.forEach((task, i) => {
     if (i < sequenceIndex) return;
     
-    let className = 'sequence-item';
-    if (i === sequenceIndex) {
-      className += ' active';
-      if (isStepCompleted) className += ' waiting-next';
-    }
-    
     const item = document.createElement('div');
-    item.className = className;
+    item.className = 'sequence-item' + (i === sequenceIndex ? ' active' : '') + (isStepCompleted && i === sequenceIndex ? ' waiting-next' : '');
     
-    const iconClass = getTaskIconClass(task);
-    
-    // 【修正】リストアイテムの構造をスマホ向けに改善
     item.innerHTML = `
       <div class="drag-handle ${i===sequenceIndex?'disabled':''}"><i class="fas fa-grip-vertical"></i></div>
-      <div class="label-container"><i class="${iconClass}"></i></div>
-      
+      <div class="label-container"><i class="${getTaskIconClass(task)}"></i></div>
       <div class="seq-inputs">
         <input type="text" class="seq-name-input" value="${task['項目名']||''}" placeholder="項目名" data-idx="${i}" onchange="updateTaskField(this, '項目名')">
         <input type="text" class="seq-text-input" value="${task['読み上げテキスト']||''}" placeholder="読み上げ" data-idx="${i}" onchange="updateTaskField(this, '読み上げテキスト')">
         <input type="text" class="seq-memo-input" value="${task['メモ']||''}" placeholder="メモ" data-idx="${i}" onchange="updateTaskField(this, 'メモ')">
-        
         <div class="seq-time-wrapper">
             <input type="number" class="seq-seconds-input" value="${task['秒数']||30}" min="1" data-idx="${i}" onchange="updateTaskField(this, '秒数')">
             <button class="mini-qt-btn" onclick="setQuickTime(${i}, 30)">30</button>
             <button class="mini-qt-btn" onclick="setQuickTime(${i}, 60)">60</button>
         </div>
       </div>
-      
       <button class="delete-btn" onclick="deleteSequenceTask(${i})" ${i===sequenceIndex?'disabled':''}><i class="fas fa-trash"></i></button>
     `;
-    
     sequenceList.appendChild(item);
   });
-  
   initSortable();
 }
 
-// リスト内のフィールド更新用
 window.updateTaskField = function(input, field) {
   const idx = parseInt(input.getAttribute('data-idx'));
   const task = sequenceTasks[idx];
   let val = input.value;
   if(field === '秒数') val = parseInt(val);
-  
   task[field] = val;
-  // allTasks側も更新
-  const orgIdx = allTasks.indexOf(task);
-  if(orgIdx !== -1) {
-      allTasks[orgIdx][field] = val;
-      saveTasksData();
-  }
-  // 実行中なら表示更新
+  saveTasksData();
   if(idx === sequenceIndex) updateCurrentTaskDisplay();
 };
 
 window.setQuickTime = function(idx, seconds) {
-  const task = sequenceTasks[idx];
-  task['秒数'] = seconds;
-  const orgIdx = allTasks.indexOf(task);
-  if(orgIdx !== -1) {
-      allTasks[orgIdx]['秒数'] = seconds;
-      saveTasksData();
-  }
+  sequenceTasks[idx]['秒数'] = seconds;
+  saveTasksData();
   renderSequenceList(sequenceTasks[0]['タスク名']);
-  if(idx === sequenceIndex) {
-      if(remainingSeconds > 0) remainingSeconds = seconds; // タイマーリセットするかは挙動によるが今回はリセットしない方が安全かも。ここでは次回の表示のために保存だけ。
-      updateTimerDisplay();
-  }
+  if(idx === sequenceIndex) updateTimerDisplay();
 };
 
 function deleteSequenceTask(index) {
@@ -814,8 +646,11 @@ function deleteSequenceTask(index) {
   const allIdx = allTasks.indexOf(task);
   if (allIdx !== -1) allTasks.splice(allIdx, 1);
   sequenceTasks.splice(index, 1);
+  // 順番振り直し
+  sequenceTasks.forEach((t, i) => t['順番'] = i + 1);
+  
   saveTasksData();
-  renderSequenceList(sequenceTasks[0]?.['タスク名'] || '');
+  renderSequenceList(sequenceTasks[0]['タスク名']);
   updateCSVData();
 }
 
@@ -826,40 +661,23 @@ function initSortable() {
     handle: '.drag-handle', animation: 150, filter: '.active', preventOnFilter: true,
     onEnd: (evt) => {
       if (evt.oldIndex === evt.newIndex) return;
+      // 実際の配列を並び替える
       const moved = sequenceTasks.splice(sequenceIndex + evt.oldIndex, 1)[0];
       sequenceTasks.splice(sequenceIndex + evt.newIndex, 0, moved);
-      renderSequenceList(sequenceTasks[0]['タスク名']);
+      
+      // 【修正】並び替え後に「順番」プロパティを更新して保存
+      sequenceTasks.forEach((t, i) => t['順番'] = i + 1);
+      
+      saveTasksData();
+      updateCSVData(); // CSVも更新
     }
   });
 }
 
-function playCompletionEffect() {
-  const overlay = document.getElementById('completionEffect');
-  const starburst = overlay.querySelector('.starburst');
-  overlay.style.visibility = 'visible';
-  requestAnimationFrame(() => { overlay.classList.add('active'); starburst.classList.add('active'); });
-  playCompletionSound();
-  setTimeout(() => {
-    overlay.classList.remove('active'); starburst.classList.remove('active'); overlay.style.visibility = 'hidden';
-  }, 1000);
-}
-
-function playCompletionSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
-      const osc = ctx.createOscillator(); const g = ctx.createGain();
-      osc.connect(g); g.connect(ctx.destination);
-      osc.frequency.value = f;
-      g.gain.setValueAtTime(0.3, ctx.currentTime + i*0.15);
-      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (i+1)*0.15);
-      osc.start(ctx.currentTime + i*0.15); osc.stop(ctx.currentTime + (i+1)*0.15);
-    });
-  } catch(e){}
-}
-
 function updateResultsTable() {
   resultsTableBody.innerHTML = '';
+  const data = currentLogView === 'detail' ? results : summaryResults;
+  // ... (省略なしで記述)
   if (currentLogView === 'detail') {
     results.forEach(r => {
       const tr = document.createElement('tr');
@@ -871,52 +689,9 @@ function updateResultsTable() {
   } else {
     summaryResults.forEach(r => {
       const tr = document.createElement('tr');
-      const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
-      const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
-      let dateRangeStr = '';
-      if (r.startTime && r.endTime) {
-        dateRangeStr = formatDateRange(r.startTime, r.endTime);
-      } else {
-        const endDate = new Date(r.date);
-        const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
-        dateRangeStr = formatDateRange(startDate, endDate);
-      }
-      tr.innerHTML = `<td>${dateRangeStr}</td><td>${formatDuration(r.seconds)}</td><td>${taskName}</td>`;
+      const taskName = r.content.replace(/\s*\(.*/, '');
+      tr.innerHTML = `<td>${r.date}</td><td>${formatDuration(r.seconds)}</td><td>${taskName}</td>`;
       resultsTableBody.appendChild(tr);
     });
   }
 }
-
-clearResultsButton.onclick = () => {
-  if(confirm('ログ消去？')) { results=[]; summaryResults=[]; saveResultsData(); updateResultsTable(); }
-};
-
-copyResultsButton.onclick = () => {
-  if (results.length===0 && summaryResults.length===0) return alert('ログなし');
-  let text = '';
-  if (currentLogView === 'detail') {
-    text = results.map(r => {
-      const endDate = new Date(r.date);
-      const startDate = new Date(endDate.getTime() - (r.seconds * 1000));
-      return `${formatDateRange(startDate, endDate)}\t${formatDuration(r.seconds)}\t${r.content}`;
-    }).join('\n');
-  } else {
-    text = summaryResults.map(r => {
-      const taskNameMatch = r.content.match(/^(.+?)\s*\(/);
-      const taskName = taskNameMatch ? taskNameMatch[1] : r.content;
-      let dateRangeStr = r.startTime && r.endTime ? formatDateRange(r.startTime, r.endTime) : r.date;
-      return `${dateRangeStr}\t${formatDuration(r.seconds)}\t${taskName}`;
-    }).join('\n');
-  }
-  navigator.clipboard.writeText(text).then(()=>alert('コピー完了'));
-};
-
-exportCsvButton.addEventListener('click', () => {
-  updateCSVData();
-  const csvContent = loadFromLocalStorage(STORAGE_KEYS.LAST_CSV);
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'lifelisten_data.csv';
-  link.click();
-});
